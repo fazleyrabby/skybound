@@ -13,6 +13,7 @@ const SECTIONS = [
   'combat',
   'vitals',
   'enemies',
+  'events',
 ] as const;
 const SLIDER_STEPS = 300;
 

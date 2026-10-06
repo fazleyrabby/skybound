@@ -1,7 +1,7 @@
 import type { Rng } from '../utils/rng';
 
 export type District =
-  'downtown' | 'residential' | 'industrial' | 'park' | 'harbor' | 'highway' | 'surround';
+  'downtown' | 'residential' | 'industrial' | 'park' | 'harbor' | 'highway' | 'surround' | 'street';
 
 /**
  * A graybox box. Rendering and physics both consume this, so visuals and
@@ -21,12 +21,15 @@ export interface BuildingDescriptor {
   color: number;
   /** False for decoration the player passes through (trees, ground patches). */
   solid: boolean;
+  /** Draw a window grid on the walls. For things that are actually buildings. */
+  windows: boolean;
 }
 
 export interface BoxOptions {
   /** Height of the underside above the ground. Default 0. */
   baseY?: number;
   solid?: boolean;
+  windows?: boolean;
 }
 
 /** Collects boxes for one district, addressed by footprint centre, size and height. */
@@ -56,6 +59,7 @@ export class BoxBuilder {
       hz: depth / 2,
       color,
       solid: options.solid ?? true,
+      windows: options.windows ?? false,
     };
     this.out.push(box);
     return box;

@@ -4,8 +4,9 @@ Read `spec.md` first. It is the source of truth; section 48 lists the agent rule
 
 ## Current state
 
-Phases 0–6 are built: bootstrap, flight prototype, camera and flight feel, city graybox, combat, enemy AI (drones), combat VFX.
-Next is Phase 7 (world system: chunks, chunk LOD, traffic, crowd NPCs, props), spec section 49. The director is steering by playing the build and giving feedback; apply their feedback before starting new work.
+Phases 0–8 are built: bootstrap, flight prototype, camera and flight feel, city graybox, combat, enemy AI (drones), combat VFX, world system, events (drone attack).
+Phase 11 (real assets) has started early at the director's request: the hero model `aether.glb` is in, built from `blender/characters/build_aether.py` and posed in code by `player/HeroRig.ts`. Drone and Titan models are not started.
+Next is Phase 9 (missions and HUD: mission framework, objectives, markers, mission UI, rewards, save of progress; First Flight and Drone Swarm), spec section 49. The director is steering by playing the build and giving feedback; apply their feedback before starting new work.
 Work one phase at a time and do not start the next phase's features early. Update this section, `docs/ARCHITECTURE.md` and `docs/DECISIONS.md` when a phase lands.
 
 `spec.md` is gitignored at the director's request, so it exists only in their working copy.

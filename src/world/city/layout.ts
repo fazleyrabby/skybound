@@ -29,10 +29,16 @@ export const Layout = {
 };
 
 export const Palette = {
+  /** Facade colours for towers: steel, blue glass, warm stone, graphite, teal, sand. */
+  towers: [0x8f9bb0, 0x6f8fb5, 0xa39a8c, 0x566174, 0x7fa3a0, 0xc2b59b],
+  podium: 0x6d7078,
+  roofUnit: 0x55595f,
+  antenna: 0xd8dde6,
   downtown: 0x8f9bb0,
-  downtownGlass: 0x6f8fb5,
   landmark: 0xc9d4e6,
   residential: 0xb9a48c,
+  /** Tan, brick, cream, grey, terracotta. */
+  houses: [0xb9a48c, 0xa5604c, 0xd6cab2, 0x9a9da3, 0xc08a62],
   industrial: 0x8a7f73,
   chimney: 0x9c5a48,
   crane: 0xd9a520,

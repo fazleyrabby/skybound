@@ -44,8 +44,15 @@ export class EnemyManager {
     };
   }
 
-  spawn(config: EnemyConfig, x: number, y: number, z: number, passive = false): Drone {
-    const drone = new Drone(this.nextId++, config, new Vector3(x, y, z), passive);
+  spawn(
+    config: EnemyConfig,
+    x: number,
+    y: number,
+    z: number,
+    passive = false,
+    respawns = true,
+  ): Drone {
+    const drone = new Drone(this.nextId++, config, new Vector3(x, y, z), passive, respawns);
     // Spread decisions out so drones do not all think on the same step.
     drone.thinkTimer = (this.drones.length % 5) * (Config.enemies.thinkInterval / 5);
     this.drones.push(drone);
@@ -57,6 +64,19 @@ export class EnemyManager {
     return this.spawn(generateEnemy(seed), x, y, z);
   }
 
+  /** Creates a dormant drone that events can deploy and dismiss. Created up front: pooling. */
+  addReserve(seed: number): Drone {
+    const drone = this.spawn(generateEnemy(seed), 0, 0, 0, false, false);
+    drone.dismiss();
+    this.wasAlive[this.drones.length - 1] = false;
+    return drone;
+  }
+
+  /** Dormant drones available to deploy. */
+  get reserve(): Drone[] {
+    return this.drones.filter((drone) => drone.dormant);
+  }
+
   spawnTrainingDummy(x: number, y: number, z: number): Drone {
     return this.spawn(trainingDummyConfig(), x, y, z, true);
   }
@@ -66,7 +86,8 @@ export class EnemyManager {
 
     // Player attacks resolved earlier this step; announce what they destroyed.
     this.drones.forEach((drone, index) => {
-      if (this.wasAlive[index] && !drone.alive) this.announceDestroyed(drone);
+      // A dismissed drone left quietly; only real kills are announced.
+      if (this.wasAlive[index] && !drone.alive && !drone.dormant) this.announceDestroyed(drone);
       this.wasAlive[index] = drone.alive;
     });
     this.fire.reportShotDown(this.missileWasAlive);
@@ -80,7 +101,7 @@ export class EnemyManager {
         }
         this.updateWeapons(drone, dt);
       }
-      drone.fixedUpdate(dt, this.world);
+      if (!drone.dormant) drone.fixedUpdate(dt, this.world);
     }
     this.resolveDroneCrashes();
     this.fire.fixedUpdate(dt, this.player.position, this.damagePlayer);
@@ -88,7 +109,8 @@ export class EnemyManager {
     // Crashes this step are announced now; rebuild what can be targeted.
     this.targets.length = 0;
     this.drones.forEach((drone, index) => {
-      if (this.wasAlive[index] && !drone.alive) this.announceDestroyed(drone);
+      // A dismissed drone left quietly; only real kills are announced.
+      if (this.wasAlive[index] && !drone.alive && !drone.dormant) this.announceDestroyed(drone);
       this.wasAlive[index] = drone.alive;
       if (drone.alive) this.targets.push(drone);
     });

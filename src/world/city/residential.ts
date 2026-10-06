@@ -17,14 +17,28 @@ export function buildResidential(out: BuildingDescriptor[], rng: Rng): void {
         const width = rng.range(12, 24);
         const depth = rng.range(12, 24);
         const height = rng.range(10, 40);
-        boxes.add(
+        const color = Palette.houses[Math.floor(rng.next() * Palette.houses.length)];
+        const house = boxes.add(
           x + rng.range(-4, 4),
           z + rng.range(-4, 4),
           width,
           depth,
           height,
-          shade(Palette.residential, rng),
+          shade(color ?? Palette.residential, rng),
+          { windows: true },
         );
+        // Stair or lift housing on most flat roofs.
+        if (rng.next() < 0.6) {
+          boxes.add(
+            house.x + rng.range(-0.3, 0.3) * width,
+            house.z + rng.range(-0.3, 0.3) * depth,
+            3.2,
+            3.2,
+            2.6,
+            Palette.roofUnit,
+            { baseY: height, solid: false },
+          );
+        }
       }
     }
   };

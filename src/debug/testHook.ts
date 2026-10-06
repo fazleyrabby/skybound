@@ -1,5 +1,7 @@
+import { Vector3 } from 'three';
 import type { LoopStats } from '../core/GameLoop';
 import type { EnemyManager } from '../enemies/EnemyManager';
+import type { WorldEvents } from '../world/WorldEvents';
 import type { CombatController } from '../player/CombatController';
 import { store, type GamePhase } from '../core/store';
 import type { Action } from '../input/Actions';
@@ -7,6 +9,8 @@ import type { InputManager } from '../input/InputManager';
 import type { Player } from '../player/Player';
 import type { FlightState } from '../player/PlayerState';
 import type { RenderStats } from '../rendering/Renderer';
+
+const ZERO = new Vector3();
 
 export interface PlayerSnapshot {
   state: FlightState;
@@ -22,10 +26,18 @@ export interface PlayerSnapshot {
   energy: number;
 }
 
+export interface WorldSnapshot {
+  liveChunks: number;
+  totalChunks: number;
+  vehicles: number;
+  pedestrians: number;
+}
+
 export interface EnemySnapshot {
   id: number;
   alive: boolean;
   passive: boolean;
+  dormant: boolean;
   state: string;
   health: number;
   x: number;
@@ -48,7 +60,17 @@ export interface TestHook {
   /** Enemy bullets and missiles currently in flight. */
   readonly enemyShots: number;
   readonly particles: number;
+  readonly world: WorldSnapshot;
+  /** Whether the hero model loaded, how many of its joints were found, and its pose. */
+  readonly hero: { model: boolean; joints: number; pose: string | null };
   damagePlayer(amount: number): void;
+  /** The current world event, if any, and the score so far. */
+  readonly event: { phase: string; site: string | null; status: string | null; timeLeft: number };
+  readonly score: number;
+  /** Starts a world event now, optionally at a given site index. */
+  triggerEvent(siteIndex?: number): boolean;
+  /** Destroys an enemy outright, as if the player had. */
+  destroyEnemy(id: number): void;
   /** Starts the simulation without pointer lock, which headless browsers may refuse. */
   start(): void;
   setAction(action: Action, held: boolean): void;
@@ -78,6 +100,9 @@ export function installTestHook(sources: {
   combat: CombatController;
   enemies: EnemyManager;
   particles: () => number;
+  world: () => WorldSnapshot;
+  hero: () => { model: boolean; joints: number; pose: string | null };
+  worldEvents: WorldEvents;
 }): void {
   let errorCount = 0;
   window.addEventListener('error', () => errorCount++);
@@ -134,6 +159,7 @@ export function installTestHook(sources: {
         id: drone.id,
         alive: drone.alive,
         passive: drone.passive,
+        dormant: drone.dormant,
         state: drone.state,
         health: drone.health,
         x: drone.position.x,
@@ -148,7 +174,30 @@ export function installTestHook(sources: {
     get particles() {
       return sources.particles();
     },
+    get world() {
+      return sources.world();
+    },
+    get hero() {
+      return sources.hero();
+    },
     damagePlayer: (amount) => player.damage(amount),
+    get event() {
+      const { phase, current, timeLeft } = sources.worldEvents;
+      return {
+        phase,
+        site: current?.site.name ?? null,
+        status: current?.status() ?? null,
+        timeLeft,
+      };
+    },
+    get score() {
+      return store.getState().score;
+    },
+    triggerEvent: (siteIndex) => sources.worldEvents.trigger(siteIndex),
+    destroyEnemy: (id) => {
+      const drone = sources.enemies.drones.find((candidate) => candidate.id === id);
+      drone?.applyHit(1e9, ZERO);
+    },
     start: () => store.getState().setPhase('running'),
     setAction: (action, held) => input.setAction(action, held),
     teleport: (x, y, z) => player.teleport(x, y, z),

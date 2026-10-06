@@ -263,8 +263,10 @@ export const Config = {
     respawnHeight: 12,
   },
   enemies: {
-    /** Hostile drones kept alive around the city until events take over spawning (Phase 8). */
-    count: 6,
+    /** Standing patrols that respawn, so the city is never empty between events. */
+    count: 2,
+    /** Dormant drones held ready for events to deploy. */
+    reserve: 8,
     /** Seconds between AI decisions per drone; movement still integrates every step. */
     thinkInterval: 0.08,
     detectRange: 220,
@@ -318,6 +320,26 @@ export const Config = {
     maxBullets: 96,
     maxMissiles: 12,
   },
+  events: {
+    /** Seconds of free flight before the first event. */
+    firstDelay: 25,
+    /** Quiet time between events, seconds. */
+    minGap: 25,
+    maxGap: 50,
+    /** An event the player never goes to ends in failure after this long. */
+    timeLimit: 100,
+    /** Within this distance of the site the player counts as engaged and the clock stops. */
+    engageRange: 320,
+    squadMin: 3,
+    squadMax: 5,
+    /** Drones appear scattered this far around the site. */
+    squadSpread: 55,
+    rewardPerDrone: 100,
+    /** Bonus for each second left on the clock. */
+    rewardPerSecond: 2,
+    /** How long the result stays on screen before the next quiet period starts. */
+    resultHold: 4,
+  },
   world: {
     seed: 1337,
     /** Distance from the city centre where the boundary headwind starts (spec section 64). */
@@ -331,6 +353,26 @@ export const Config = {
     ceilingEnd: 2000,
     /** Half size of the ground and water: everything reachable plus margin. */
     halfSize: 6000,
+
+    /** Chunks (spec section 34): the core is a grid of square chunks that switch street life on and off. */
+    chunkSize: 200,
+    /** A chunk is live when its centre is this close to the player, or to where they will be. */
+    chunkActiveRadius: 420,
+    /** Seconds of travel used to predict where the player will be. */
+    chunkLookAhead: 1.5,
+    /** Chunk switches allowed per update, so fast flight never causes a hitch. */
+    chunkChangesPerUpdate: 2,
+
+    vehicleCount: 150,
+    vehicleMinSpeed: 9,
+    vehicleMaxSpeed: 18,
+    pedestrianCount: 320,
+    pedestrianMinSpeed: 1.1,
+    pedestrianMaxSpeed: 1.9,
+    /** Pedestrians are a few pixels from high up; do not draw them above this height or beyond this range. */
+    pedestrianMaxAltitude: 140,
+    pedestrianRange: 260,
+    streetLightSpacing: 40,
   },
   debug: {
     /** Overlay refresh rate; low so it does not perturb what it measures. */

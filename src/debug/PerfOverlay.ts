@@ -11,6 +11,10 @@ export interface PerfSample {
   pixelRatio: number;
   bodies: number;
   particles: number;
+  /** Live chunks over total, e.g. "9/25". */
+  chunks: string;
+  vehicles: number;
+  pedestrians: number;
   /** Live enemies and missiles. */
   entities: number;
   /** Player speed in m/s. */
@@ -66,6 +70,7 @@ export class PerfOverlay {
         `Draw Calls: ${s.drawCalls}   Triangles: ${formatCount(s.triangles)}`,
         `Geometries: ${s.geometries}   Textures: ${s.textures}`,
         `Entities: ${s.entities}   Bodies: ${s.bodies}   Particles: ${s.particles}   DPR: ${s.pixelRatio.toFixed(2)}`,
+        `Chunks: ${s.chunks}   Vehicles: ${s.vehicles}   Pedestrians: ${s.pedestrians}`,
         `Speed: ${s.speed.toFixed(0)} m/s (${toDisplaySpeed(s.speed).toFixed(0)} km/h)   State: ${s.flightState}`,
       ].join('\n');
     }

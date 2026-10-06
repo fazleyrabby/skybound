@@ -74,6 +74,9 @@ export class Drone implements Damageable {
   burstTimer = 0;
   orbitSign = 1;
 
+  /** Held in reserve: not in the world until an event deploys it. */
+  dormant = false;
+
   readonly rng: Rng;
   private respawnIn = 0;
 
@@ -83,6 +86,8 @@ export class Drone implements Damageable {
     readonly home: Vector3,
     /** Never thinks, moves or fires: a training target. */
     readonly passive: boolean,
+    /** Comes back by itself after being destroyed. Event drones do not. */
+    private readonly respawns = true,
   ) {
     this.radius = BASE_RADIUS * config.bodyScale;
     this.maxHealth = config.health;
@@ -131,6 +136,7 @@ export class Drone implements Damageable {
     this.stateTime += dt;
 
     if (!this.alive) {
+      if (this.dormant || !this.respawns) return false;
       this.respawnIn -= dt;
       if (this.respawnIn > 0) return false;
       this.reset();
@@ -157,6 +163,22 @@ export class Drone implements Damageable {
     }
     this.velocity.copy(this.position).sub(this.previousPosition).divideScalar(dt);
     return false;
+  }
+
+  /** Brings a reserve drone into the world at a new post. */
+  deploy(x: number, y: number, z: number): void {
+    this.home.set(x, y, z);
+    this.dormant = false;
+    this.reset();
+  }
+
+  /** Takes the drone out of the world without an explosion, back into reserve. */
+  dismiss(): void {
+    this.alive = false;
+    this.dormant = true;
+    this.threat = 0;
+    this.state = 'DESTROYED';
+    this.cancelFire();
   }
 
   /** Hit the world: being thrown into it hurts, flying into it just stops. */

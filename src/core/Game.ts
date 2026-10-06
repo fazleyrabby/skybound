@@ -13,12 +13,15 @@ import { CombatController } from '../player/CombatController';
 import { Player } from '../player/Player';
 import { createPlayerInput } from '../player/PlayerState';
 import { PlayerView } from '../player/PlayerView';
+import { AssetManager } from '../rendering/AssetManager';
 import { addBuildings } from '../rendering/BuildingRenderer';
 import { addEnvironment } from '../rendering/Environment';
+import { FollowerRenderer } from '../rendering/FollowerRenderer';
 import { ProjectileRenderer } from '../rendering/ProjectileRenderer';
 import { Renderer } from '../rendering/Renderer';
 import { BoundsWarning } from '../ui/BoundsWarning';
 import { DamageFlash } from '../ui/DamageFlash';
+import { EventUI } from '../ui/EventUI';
 import { HUD } from '../ui/HUD';
 import { StartScreen } from '../ui/StartScreen';
 import { TargetReticle } from '../ui/TargetReticle';
@@ -26,7 +29,11 @@ import { CombatEffects, type SmokeSource } from '../vfx/CombatEffects';
 import { FlightVfx } from '../vfx/FlightVfx';
 import { ParticleSystem } from '../vfx/ParticleSystem';
 import { ShockRings } from '../vfx/ShockRings';
+import { ChunkManager } from '../world/ChunkManager';
 import { generateCity } from '../world/CityGenerator';
+import { DroneAttackEvent } from '../world/events/DroneAttackEvent';
+import { StreetLife } from '../world/StreetLife';
+import { WorldEvents } from '../world/WorldEvents';
 import { Layout } from '../world/city/layout';
 import { Config } from './Config';
 import { EventBus } from './EventBus';
@@ -49,6 +56,10 @@ const DRONE_POSTS: ReadonlyArray<readonly [x: number, y: number, z: number]> = [
   [420, 140, 100],
   [-420, 140, 60],
 ];
+
+/** Width, height, length in metres. */
+const VEHICLE_SIZE = [2, 1.5, 4.4] as const;
+const PEDESTRIAN_SIZE = [0.5, 1.7, 0.35] as const;
 
 const BLAST_STYLE = { color: 0x7fe7ff, thickness: 0.35, length: 5 };
 const BULLET_STYLE = { color: 0xffa040, thickness: 0.22, length: 4 };
@@ -91,6 +102,20 @@ export class Game {
     });
     addBuildings(renderer.scene, city.buildings);
 
+    // Street life: chunks decide where it runs; traffic and pedestrians follow the roads.
+    const chunks = new ChunkManager();
+    const streetLife = new StreetLife(city.roads, chunks, Config.world.seed);
+    const vehicleRenderer = new FollowerRenderer(
+      renderer.scene,
+      Config.world.vehicleCount,
+      VEHICLE_SIZE,
+    );
+    const pedestrianRenderer = new FollowerRenderer(
+      renderer.scene,
+      Config.world.pedestrianCount,
+      PEDESTRIAN_SIZE,
+    );
+
     // Player: spawn standing on the central rooftop.
     const { height, radius, skin, maxSlope, snapToGround } = Config.player;
     const spawn = new Vector3(city.spawn.x, city.spawn.y + height / 2 + skin, city.spawn.z);
@@ -99,7 +124,9 @@ export class Game {
       spawn,
     );
     const player = new Player(mover, spawn, events);
-    const playerView = new PlayerView(renderer.scene, player.state);
+    const assets = new AssetManager();
+    const heroModel = await assets.loadModel('hero');
+    const playerView = new PlayerView(renderer.scene, player.state, events, heroModel);
 
     // Enemies: a training dummy off the spawn roof, and hostile drones on patrol.
     const enemies = new EnemyManager(events, physics, player.state, (amount) =>
@@ -109,6 +136,15 @@ export class Game {
     DRONE_POSTS.slice(0, Config.enemies.count).forEach(([x, y, z], index) => {
       enemies.spawnHostile(Config.world.seed + index, x, y, z);
     });
+    // Reserve drones sit dormant until an event deploys them.
+    for (let i = 0; i < Config.enemies.reserve; i++) {
+      enemies.addReserve(Config.world.seed + 100 + i);
+    }
+    const worldEvents = new WorldEvents(
+      [(site, rng) => new DroneAttackEvent(site, enemies, rng)],
+      events,
+      Config.world.seed,
+    );
     const projectiles = new Projectiles(physics, events);
     const combat = new CombatController(player.state, () => enemies.targets, projectiles, events);
     const droneViews = enemies.drones.map((drone) => new DroneView(renderer.scene, drone));
@@ -138,6 +174,7 @@ export class Game {
     const overlay = new PerfOverlay(document.body);
     const boundsWarning = new BoundsWarning(document.body, player.state);
     const hud = new HUD(document.body, player.state);
+    const eventUI = new EventUI(document.body, renderer.camera, worldEvents, player.state.position);
     const damageFlash = new DamageFlash(document.body, events);
     const reticle = new TargetReticle(document.body, renderer.camera, combat.targeting);
     if (isDebugEnabled()) new TuningPanel(document.body);
@@ -163,6 +200,9 @@ export class Game {
             player.fixedUpdate(playerInput, step);
             projectiles.fixedUpdate(step, enemies.targets);
             enemies.fixedUpdate(step);
+            worldEvents.fixedUpdate(step, player.state.position);
+            streetLife.fixedUpdate(step);
+            chunks.update(player.state.position, player.state.velocity);
             physics.step();
           }
           input.endStep();
@@ -175,6 +215,17 @@ export class Game {
           playerView.update(alpha, frameDelta);
           for (const view of droneViews) view.update(alpha, frameDelta);
           for (const shots of shotRenderers) shots.update(alpha);
+          streetLife.prepare(player.state.position, loop.paused ? 0 : alpha * Config.sim.step);
+          vehicleRenderer.update(
+            streetLife.vehicleBuffer,
+            streetLife.vehicleColors,
+            streetLife.visibleVehicles,
+          );
+          pedestrianRenderer.update(
+            streetLife.pedestrianBuffer,
+            streetLife.pedestrianColors,
+            streetLife.visiblePedestrians,
+          );
           cameraRig.update(alpha, frameDelta);
           vfx.update(frameDelta);
           combatEffects.update(frameDelta);
@@ -183,6 +234,7 @@ export class Game {
           audio.update();
           boundsWarning.update();
           hud.update(frameDelta);
+          eventUI.update(frameDelta);
           damageFlash.update(frameDelta);
           reticle.update();
           renderer.render();
@@ -191,6 +243,9 @@ export class Game {
             simMs: loop.stats.lastSimMs,
             bodies: physics.bodyCount,
             particles: particles.count,
+            chunks: `${chunks.liveCount}/${chunks.total}`,
+            vehicles: streetLife.visibleVehicles,
+            pedestrians: streetLife.visiblePedestrians,
             entities: enemies.targets.length,
             speed: player.state.speed,
             flightState: player.state.diving ? 'DIVING' : player.state.state,
@@ -229,6 +284,14 @@ export class Game {
         combat,
         enemies,
         particles: () => particles.count,
+        hero: () => playerView.debug,
+        worldEvents,
+        world: () => ({
+          liveChunks: chunks.liveCount,
+          totalChunks: chunks.total,
+          vehicles: streetLife.visibleVehicles,
+          pedestrians: streetLife.visiblePedestrians,
+        }),
       });
     }
 

@@ -7,11 +7,15 @@ import { buildHighway } from './city/highway';
 import { buildIndustrial } from './city/industrial';
 import { Layout } from './city/layout';
 import { buildPark } from './city/park';
+import { buildProps } from './city/props';
 import { buildResidential } from './city/residential';
+import { buildRoads, type Road } from './city/roads';
 import { buildSurround } from './city/surround';
 
 export interface City {
   buildings: BuildingDescriptor[];
+  /** Roads that traffic and pedestrians follow. */
+  roads: Road[];
   /** Surface point the player starts standing on. */
   spawn: { x: number; y: number; z: number };
   /** Land ends at this x and z on the east and south sides; beyond is ocean. */
@@ -34,9 +38,12 @@ export function generateCity(seed: number = Config.world.seed): City {
   buildPark(buildings, stream(5));
   buildHighway(buildings);
   buildSurround(buildings, stream(6), Config.world.softRadius);
+  const roads = buildRoads();
+  buildProps(buildings, roads);
 
   return {
     buildings,
+    roads,
     spawn: { x: spawnRoof.x, y: topOf(spawnRoof), z: spawnRoof.z },
     shore: Layout.shore,
   };

@@ -2,6 +2,40 @@
 
 Short dated entries. Newest first.
 
+## 2026-10-06 — Phase 8
+
+- **One event at a time, one event type (drone attack).** New types implement `WorldEvent` and are added to the factory list; the manager does not change.
+- **The event clock stops while the player is at the site.** An event can only be lost by not going. Once there, the fight takes as long as it takes.
+- **Standing patrols cut from six to two**; the other drones are a dormant reserve of eight that events deploy. The city is quiet between events, which suits free flight.
+- **Failure has no penalty** beyond the missed reward, as spec section 24 says.
+- **Score and event counts live in the zustand store** (low-frequency state). They are not saved yet; persistence comes with missions in Phase 9.
+- **First event after 25 s, then 25–50 s gaps.** Guesses, in `Config.events`.
+
+## 2026-10-06 — Landing poses and building design (director feedback)
+
+- **Space / C keep the hero upright.** The body now leans only with forward flight (the `cruise` channel), not with total velocity, so a vertical descent is a hover landing rather than a nose dive. New `ascend` and `descend` poses; the landing crouch became a one-knee superhero landing and is held for 0.55 s.
+- **Building facades are a shader, not textures or geometry.** Boxes flagged `windows` get a window grid in real metres with corner piers, a ground-floor band, a parapet, per-window glass tint and a share of lit windows. Still one draw call. The pattern fades to its average tone with distance to avoid shimmer.
+- **`setWindowLight()` is exposed** for the day/night pass (Phase 13) to light the city at night.
+- **Towers are a podium plus one to three stepped tiers plus rooftop plant.** Roof plant and masts are non-solid so there is nothing thin to snag on.
+- **Part of Phase 13 (world polish) pulled forward** at the director's request. Sky, shadows, water and signage are still to do.
+
+## 2026-10-06 — Hero model (Phase 11, started early)
+
+- **Pulled forward at the director's request** once Blender was reachable (Blender MCP add-on socket on port 9876, driven directly; no MCP tool was attached to the session).
+- **Aether is a stylized armoured figure built procedurally**: lofted body shapes, armour shells, emissive core, visor and strips. 31k triangles, 4 materials, 529 KB. Hard-surface was chosen because it is what scripted modelling does well; an organic bare-faced hero is not.
+- **Rigid segments on a node hierarchy, not a skinned mesh.** This is rung 4 of the fallback ladder in spec section 69. No weight painting, no armature, joints hidden by overlapping armour. The cost is no soft deformation.
+- **Poses are authored in code, not as Blender clips.** One Euler rotation per joint, blended. Cheap to iterate from in-game screenshots, and flight needs silhouettes more than cycles.
+- **14 joints with 4 materials each cost about 45 draw calls.** Within budget; merge materials into a palette texture if it matters later.
+- **The model was built in a new scene (`SKYBOUND_Aether`) inside the director's already-open Blender file.** Their other scenes were not touched and the file was not saved. The source is written separately to `blender/characters/aether.blend`.
+
+## 2026-10-06 — Phase 7
+
+- **Chunks gate street life, not geometry.** The whole graybox city is about 1,000 boxes in one draw call, so there is nothing worth unloading. Chunk-level building LOD and asset streaming wait until real art makes them necessary (spec section 34 allows this).
+- **Traffic and pedestrians are path followers**, not agents: fixed straight paths, wrap at the ends, shrink in and out instead of popping. Vehicles pass through each other at intersections. No collision with the player.
+- **Roads are a hand-written list** matching the downtown lot grid, the highway ring and the bridge. Outer districts have no roads yet; their lots are not laid out around streets.
+- **Pedestrians are plain boxes** with no walk animation. Vertex-animation textures (spec section 22) come with a real crowd mesh.
+- **Street lamps and asphalt are boxes in the building mesh**: no new draw calls, no colliders.
+
 ## 2026-10-06 — Phase 6
 
 - **Particles are solid-colour cubes that shrink away, not additive sprites.** Additive blending washed every colour to white against the daytime sky. Revisit with soft sprites and bloom in the graphics pass.

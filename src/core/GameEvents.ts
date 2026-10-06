@@ -23,6 +23,16 @@ export interface GameEvents {
   'combat:blastFired': Record<string, never>;
   /** A blast hit the world rather than a target. */
   'combat:blastImpact': { x: number; y: number; z: number };
+  /** A world event (drone attack, ...) began at a site. */
+  'world:eventStarted': {
+    type: string;
+    title: string;
+    site: string;
+    x: number;
+    y: number;
+    z: number;
+  };
+  'world:eventEnded': { type: string; outcome: 'success' | 'failure'; reward: number };
   'enemy:destroyed': { id: number; x: number; y: number; z: number };
   'enemy:fired': { kind: 'bullet' | 'missile'; x: number; y: number; z: number };
   /** Enemy fire or a missile ended against the world, or a missile was shot down. */

@@ -40,6 +40,10 @@ export class FlightAudio {
       if (kind === 'missile') this.playNoiseBurst(0.3, 900, 200, 0.4);
       else this.playNoiseBurst(0.1, 3200, 1200, 0.06);
     });
+    events.on('world:eventStarted', () => this.playTones([660, 880, 660], 0.12));
+    events.on('world:eventEnded', ({ outcome }) =>
+      this.playTones(outcome === 'success' ? [523, 659, 784, 1047] : [392, 330, 262], 0.14),
+    );
     events.on('player:damaged', () => this.playNoiseBurst(0.5, 700, 150, 0.18));
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) void this.context?.suspend();
@@ -147,6 +151,25 @@ export class FlightAudio {
   private playImpact(speed: number): void {
     const loudness = clamp(speed / 80, 0.1, 1) * Config.audio.impactVolume;
     this.playNoiseBurst(loudness, 500, 120, 0.25);
+  }
+
+  /** A short run of notes: alerts and results. */
+  private playTones(frequencies: readonly number[], noteSeconds: number): void {
+    const context = this.context;
+    if (!context || !this.master || context.state !== 'running') return;
+    frequencies.forEach((frequency, index) => {
+      const start = context.currentTime + index * noteSeconds;
+      const oscillator = context.createOscillator();
+      oscillator.type = 'triangle';
+      oscillator.frequency.value = frequency;
+      const gain = context.createGain();
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.25, start + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + noteSeconds * 1.4);
+      oscillator.connect(gain).connect(this.master as GainNode);
+      oscillator.start(start);
+      oscillator.stop(start + noteSeconds * 1.5);
+    });
   }
 
   /** One-shot noise through a low-pass that sweeps from `fromHz` down to `toHz`. */

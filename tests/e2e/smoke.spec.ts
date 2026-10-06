@@ -38,6 +38,11 @@ test('boots, renders and advances the simulation without errors', async ({ page 
     bodies: window.__SKYBOUND__!.bodyCount,
     drawCalls: window.__SKYBOUND__!.render.drawCalls,
   }));
+  // The hero model loaded and every joint was found.
+  expect(await page.evaluate(() => window.__SKYBOUND__!.hero)).toMatchObject({
+    model: true,
+    joints: 14,
+  });
   expect(state.errors).toBe(0);
   expect(state.bodies).toBeGreaterThan(500); // ground + city + player
   expect(state.drawCalls).toBeGreaterThan(0);
@@ -239,7 +244,9 @@ test('hostile drones patrol, then engage a player who comes close', async ({ pag
 
   const enemies = await page.evaluate(() => window.__SKYBOUND__!.enemies);
   expect(enemies.filter((enemy) => enemy.passive)).toHaveLength(1);
-  expect(enemies.filter((enemy) => !enemy.passive).length).toBeGreaterThanOrEqual(5);
+  // Two standing patrols; the rest wait in reserve for events.
+  expect(enemies.filter((enemy) => !enemy.passive && !enemy.dormant)).toHaveLength(2);
+  expect(enemies.filter((enemy) => enemy.dormant).length).toBeGreaterThanOrEqual(5);
   expect((await hostile()).state).toBe('PATROL');
   expect(await page.evaluate(() => window.__SKYBOUND__!.player.health)).toBe(100);
 
@@ -270,5 +277,65 @@ test('hostile drones patrol, then engage a player who comes close', async ({ pag
   );
   const outcome = (await result.jsonValue()) as { health: number; simSeconds: number };
   expect(outcome.health).toBeLessThan(100);
+  expect(await page.evaluate(() => window.__SKYBOUND__!.errorCount)).toBe(0);
+});
+
+test('street life: chunks, traffic and pedestrians within the draw-call budget', async ({
+  page,
+}) => {
+  await bootAndStart(page);
+  const world = () => page.evaluate(() => window.__SKYBOUND__!.world);
+
+  // On the spawn roof: traffic is visible below, pedestrians are not drawn from this height.
+  await expect.poll(async () => (await world()).liveChunks).toBeGreaterThan(8);
+  expect((await world()).vehicles).toBeGreaterThan(100);
+  expect((await world()).pedestrians).toBe(0);
+
+  // Down at street level on the avenue the crowd appears.
+  await page.evaluate(() => window.__SKYBOUND__!.teleport(0, 6, 60));
+  await expect.poll(async () => (await world()).pedestrians).toBeGreaterThan(15);
+
+  // Far out over the ocean nothing in the core is live.
+  await page.evaluate(() => window.__SKYBOUND__!.teleport(2500, 200, 2500));
+  await expect.poll(async () => (await world()).liveChunks).toBe(0);
+  expect((await world()).vehicles).toBe(0);
+
+  const render = await page.evaluate(() => window.__SKYBOUND__!.render);
+  expect(render.drawCalls).toBeLessThanOrEqual(300);
+  expect(render.triangles).toBeLessThanOrEqual(1_500_000);
+  expect(await page.evaluate(() => window.__SKYBOUND__!.errorCount)).toBe(0);
+});
+
+test('world event: a drone attack is announced, marked, and pays out when cleared', async ({
+  page,
+}) => {
+  await bootAndStart(page);
+  const event = () => page.evaluate(() => window.__SKYBOUND__!.event);
+  expect((await event()).phase).toBe('IDLE');
+  await expect(page.locator('#event-banner')).toBeHidden();
+
+  expect(await page.evaluate(() => window.__SKYBOUND__!.triggerEvent(1))).toBe(true);
+  expect(await event()).toMatchObject({ phase: 'ACTIVE', site: 'Harbor' });
+  await expect(page.locator('#event-banner')).toContainText('DRONE ATTACK');
+  await expect(page.locator('#event-banner')).toContainText('Harbor');
+  await expect(page.locator('#event-marker')).toContainText(' m');
+
+  const squad = await page.evaluate(() =>
+    window.__SKYBOUND__!.enemies.filter((e) => !e.passive && !e.dormant && e.alive).slice(2),
+  );
+  expect(squad.length).toBeGreaterThanOrEqual(3);
+
+  // Arriving at the site stops the clock.
+  await page.evaluate(() => window.__SKYBOUND__!.teleport(250, 140, 480));
+  await expect.poll(async () => (await event()).phase).toBe('ENGAGED');
+
+  for (const drone of squad) {
+    await page.evaluate((id) => window.__SKYBOUND__!.destroyEnemy(id), drone.id);
+  }
+  await expect.poll(async () => (await event()).phase).toBe('SUCCESS');
+  await expect(page.locator('#event-banner')).toContainText('CLEARED');
+  await expect(page.locator('#score')).toContainText('SCORE');
+  expect(await page.evaluate(() => window.__SKYBOUND__!.score)).toBeGreaterThanOrEqual(300);
+  await expect(page.locator('#event-marker')).toBeHidden();
   expect(await page.evaluate(() => window.__SKYBOUND__!.errorCount)).toBe(0);
 });

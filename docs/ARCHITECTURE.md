@@ -1,6 +1,6 @@
 # Architecture
 
-State as of Phase 6. Update this when a phase adds or changes a system.
+State as of Phase 8. Update this when a phase adds or changes a system.
 
 ## Boot
 
@@ -20,18 +20,23 @@ Gameplay state changes only in the fixed step. Anything simulated keeps a previo
 
 ## Player
 
-| File                         | Role                                                                                                                          |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `player/PlayerState.ts`      | Plain data: position, velocity channels, aim, heading, state. Aim helpers.                                                    |
-| `player/FlightController.ts` | `updateFlight`: pure function for HOVERING / FLYING / BOOSTING.                                                               |
-| `player/GroundController.ts` | Pure functions for GROUND, JUMPING, LANDING.                                                                                  |
-| `player/PlayerController.ts` | State machine. Picks the model, moves through the `CollisionMover`, applies collision response and transitions, emits events. |
-| `player/Player.ts`           | Owns state and controller; look input; respawn.                                                                               |
-| `player/PlayerView.ts`       | Placeholder capsule. Reads state only.                                                                                        |
+| File                                | Role                                                                                                                          |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `player/PlayerState.ts`             | Plain data: position, velocity channels, aim, heading, state. Aim helpers.                                                    |
+| `player/FlightController.ts`        | `updateFlight`: pure function for HOVERING / FLYING / BOOSTING.                                                               |
+| `player/GroundController.ts`        | Pure functions for GROUND, JUMPING, LANDING.                                                                                  |
+| `player/PlayerController.ts`        | State machine. Picks the model, moves through the `CollisionMover`, applies collision response and transitions, emits events. |
+| `player/Player.ts`                  | Owns state and controller; look input; respawn.                                                                               |
+| `player/PlayerView.ts`              | Draws the Aether model (capsule fallback if it fails to load), leans it into flight, picks the pose. Reads state only.        |
+| `player/HeroRig.ts`, `heroPoses.ts` | Rotates the model's joint nodes toward named poses, eased per joint. Poses are data: one Euler rotation per joint.            |
 
 Flight velocity is two channels. `cruise` is forward flight: its direction rotates toward the aim at a speed-dependent turn rate and its magnitude is damped separately, so turns keep speed. `nudge` is strafe, direct vertical and reverse, damped fast, so hovering is precise. `velocity = cruise + nudge`.
 
 Aim versus heading: the mouse (or right stick) changes `aim`, which the camera orbits on and which flight steers toward while accelerating. `heading` is where the hero faces; it follows the direction of travel and holds when still.
+
+### Hero model
+
+`public/assets/characters/aether.glb` is 14 rigid segments on a node hierarchy (torso, head, and three joints per limb), not a skinned mesh. It is built by `blender/characters/build_aether.py` and exported by `export_aether.py`; both run inside Blender. Animation is blended poses in code rather than authored clips: idle, two walk extremes, fall, land, hover, fly, boost, dive, charge, punch, blast. `rendering/AssetManager.ts` loads it through `assetManifest.ts`; a failed load falls back to the capsule.
 
 ## Collision
 
@@ -54,6 +59,25 @@ Each district is its own file under `world/city/` with its own random stream, so
 | surround    | sparse low blocks out to 3 km, three distant tower clusters                    | —                                                           |
 
 Land and ocean share one flat collider at y = 0; the ocean lies south and east of `Layout.shore`.
+
+### Building look
+
+`rendering/BuildingRenderer.ts` patches the standard material: boxes whose descriptor has `windows: true` get a procedural window facade computed from the box's own size, so no UVs or textures are needed. Downtown towers are built in `world/city/downtown.ts` as podium, stepped tiers and non-solid rooftop plant.
+
+### Street life
+
+- `world/city/roads.ts` — fixed list of straight roads: the downtown street grid, the elevated ring, the ocean bridge. `world/city/props.ts` lays asphalt strips and lamp posts along the streets as non-solid boxes in the shared building mesh.
+- `world/ChunkManager.ts` — 5 × 5 grid of 200 m chunks over the core. A chunk is live when near the player or near where the player will be in 1.5 s; switches are limited to two per update. For now "live" gates pedestrians; geometry stays loaded.
+- `world/PathFollowers.ts` — things that travel along paths and wrap: typed arrays, no allocation, position a pure function of distance travelled. Writes a packed instance buffer.
+- `world/StreetLife.ts` — 150 vehicles on the roads, 320 pedestrians on sidewalks and park paths. Pedestrians are drawn only in live chunks, within 260 m and below 140 m altitude.
+- `rendering/FollowerRenderer.ts` — one instanced mesh per kind.
+
+### Events
+
+- `world/WorldEvents.ts` — runs one dynamic event at a time: IDLE → ACTIVE ⇄ ENGAGED → SUCCESS | FAILURE → IDLE. Picks a site (never the same twice running), owns the clock, banks the reward in the store, emits `world:eventStarted` / `world:eventEnded`. The clock runs only while the player is away from the site.
+- `world/events/WorldEvent.ts` — the interface an event type implements (`start`, `update`, `status`, `reward`, `cleanup`) and the list of sites. `DroneAttackEvent.ts` is the first type: deploy a squad from the reserve, succeed when all are destroyed.
+- Reserve drones: `EnemyManager.addReserve()` creates dormant drones up front; events `deploy()` and `dismiss()` them. Nothing is allocated when an event starts.
+- `ui/EventUI.ts` — banner, site marker that slides to the screen edge when out of view, result, score.
 
 `world/WorldBounds.ts` applies the soft limits from spec section 64 to the flight velocity channels: a headwind from 3 km that stops outward flight by 4 km and pushes back, and upward speed fading out between 1,500 and 2,000 m. `ui/BoundsWarning.ts` tells the player why.
 

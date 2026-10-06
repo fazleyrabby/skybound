@@ -33,6 +33,7 @@ export function buildSurround(out: BuildingDescriptor[], rng: Rng, radius: numbe
       rng.range(20, 60),
       rng.range(6, 28),
       shade(Palette.suburb, rng),
+      { windows: true },
     );
   }
 
@@ -45,6 +46,7 @@ export function buildSurround(out: BuildingDescriptor[], rng: Rng, radius: numbe
         rng.range(24, 40),
         rng.range(50, 160),
         shade(Palette.downtown, rng),
+        { windows: true },
       );
     }
   }

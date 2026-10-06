@@ -33,11 +33,12 @@ describe('city generation', () => {
 
   it('stays within budget for one instanced draw call', () => {
     expect(city.buildings.length).toBeGreaterThan(600);
-    expect(city.buildings.length).toBeLessThan(2000);
+    expect(city.buildings.length).toBeLessThan(3000);
   });
 
   it('downtown is tall and stays inside its block', () => {
-    const towers = inDistrict('downtown').filter((b) => b.y - b.hy === 0);
+    // Ground-level boxes taller than a podium are tower base tiers.
+    const towers = inDistrict('downtown').filter((b) => b.y - b.hy === 0 && topOf(b) > 20);
     expect(towers.length).toBeGreaterThan(30);
     for (const tower of towers) {
       expect(topOf(tower)).toBeGreaterThanOrEqual(100 * 0.6);
@@ -45,7 +46,7 @@ describe('city generation', () => {
       expect(Math.abs(tower.x) + tower.hx).toBeLessThanOrEqual(Layout.downtownHalf + 1);
       expect(Math.abs(tower.z) + tower.hz).toBeLessThanOrEqual(Layout.downtownHalf + 1);
     }
-    expect(Math.max(...towers.map(topOf))).toBeGreaterThan(250);
+    expect(Math.max(...inDistrict('downtown').map(topOf))).toBeGreaterThan(250);
   });
 
   it('keeps the avenue canyon clear through downtown', () => {
@@ -142,5 +143,45 @@ describe('world bounds (spec section 64)', () => {
     expect(player.state.position.y).toBeLessThanOrEqual(ceilingEnd + 1);
     run(player, 3, { descend: true });
     expect(player.state.position.y).toBeLessThan(ceilingEnd - 30); // coming down is free
+  });
+});
+
+describe('building design', () => {
+  it('real buildings get window facades; infrastructure and props do not', () => {
+    const withWindows = (district: District): number =>
+      inDistrict(district).filter((b) => b.windows).length;
+    expect(withWindows('downtown')).toBeGreaterThan(60);
+    expect(withWindows('residential')).toBeGreaterThan(80);
+    expect(withWindows('surround')).toBeGreaterThan(100);
+    for (const district of ['highway', 'park', 'street', 'harbor'] as const) {
+      expect(withWindows(district)).toBe(0);
+    }
+  });
+
+  it('towers step in as they rise and never overhang their lot', () => {
+    const tiers = inDistrict('downtown').filter((b) => b.windows && b.solid);
+    const upper = tiers.filter((b) => b.y - b.hy > 30);
+    expect(upper.length).toBeGreaterThan(15);
+    for (const tier of upper) {
+      const below = tiers.find(
+        (b) =>
+          b !== tier &&
+          Math.abs(topOf(b) - (tier.y - tier.hy)) < 1e-6 &&
+          b.x === tier.x &&
+          b.z === tier.z,
+      );
+      expect(below).toBeDefined();
+      expect(tier.hx).toBeLessThan(below!.hx);
+      expect(tier.hz).toBeLessThan(below!.hz);
+    }
+  });
+
+  it('rooftop plant is decoration: no colliders, and none on the spawn roof', () => {
+    const { x, y, z } = city.spawn;
+    const plant = inDistrict('downtown').filter((b) => !b.solid);
+    expect(plant.length).toBeGreaterThan(60);
+    expect(plant.some((b) => Math.abs(b.x - x) < 18 && Math.abs(b.z - z) < 18 && b.y > y)).toBe(
+      false,
+    );
   });
 });
