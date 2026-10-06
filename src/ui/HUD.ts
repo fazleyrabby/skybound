@@ -59,6 +59,7 @@ function createBar(name: string, color: string): Bar {
     borderRadius: '3px',
     overflow: 'hidden',
     transition: 'opacity 0.4s',
+    opacity: '0',
   });
   const fill = document.createElement('div');
   Object.assign(fill.style, { height: '100%', background: color, transformOrigin: 'left' });

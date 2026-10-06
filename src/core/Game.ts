@@ -18,10 +18,14 @@ import { addEnvironment } from '../rendering/Environment';
 import { ProjectileRenderer } from '../rendering/ProjectileRenderer';
 import { Renderer } from '../rendering/Renderer';
 import { BoundsWarning } from '../ui/BoundsWarning';
+import { DamageFlash } from '../ui/DamageFlash';
 import { HUD } from '../ui/HUD';
 import { StartScreen } from '../ui/StartScreen';
 import { TargetReticle } from '../ui/TargetReticle';
+import { CombatEffects, type SmokeSource } from '../vfx/CombatEffects';
 import { FlightVfx } from '../vfx/FlightVfx';
+import { ParticleSystem } from '../vfx/ParticleSystem';
+import { ShockRings } from '../vfx/ShockRings';
 import { generateCity } from '../world/CityGenerator';
 import { Layout } from '../world/city/layout';
 import { Config } from './Config';
@@ -118,6 +122,10 @@ export class Game {
     const cameraRig = new CameraRig(renderer.camera, player.state, physics, events);
     const vfx = new FlightVfx(renderer.scene, renderer.camera, player.state, events);
     const audio = new FlightAudio(player.state, events);
+    const particles = new ParticleSystem(renderer.scene);
+    const shockRings = new ShockRings(renderer.scene, renderer.camera);
+    const smokeSources: SmokeSource[] = [...enemies.drones, ...enemies.fire.missiles];
+    const combatEffects = new CombatEffects(particles, shockRings, () => smokeSources, events);
 
     // Pointer lock drives pause: locked = running, released (Esc, focus loss) = paused.
     const input = new InputManager(canvas, (locked) => {
@@ -130,6 +138,7 @@ export class Game {
     const overlay = new PerfOverlay(document.body);
     const boundsWarning = new BoundsWarning(document.body, player.state);
     const hud = new HUD(document.body, player.state);
+    const damageFlash = new DamageFlash(document.body, events);
     const reticle = new TargetReticle(document.body, renderer.camera, combat.targeting);
     if (isDebugEnabled()) new TuningPanel(document.body);
 
@@ -168,16 +177,21 @@ export class Game {
           for (const shots of shotRenderers) shots.update(alpha);
           cameraRig.update(alpha, frameDelta);
           vfx.update(frameDelta);
+          combatEffects.update(frameDelta);
+          particles.update(frameDelta);
+          shockRings.update(frameDelta);
           audio.update();
           boundsWarning.update();
           hud.update(frameDelta);
+          damageFlash.update(frameDelta);
           reticle.update();
           renderer.render();
           overlay.update(frameDelta, () => ({
             ...renderer.stats,
             simMs: loop.stats.lastSimMs,
             bodies: physics.bodyCount,
-            steps: loop.stats.stepCount,
+            particles: particles.count,
+            entities: enemies.targets.length,
             speed: player.state.speed,
             flightState: player.state.diving ? 'DIVING' : player.state.state,
           }));
@@ -214,6 +228,7 @@ export class Game {
         camera: () => cameraRig.debug,
         combat,
         enemies,
+        particles: () => particles.count,
       });
     }
 

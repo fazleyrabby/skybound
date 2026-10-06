@@ -161,6 +161,16 @@ export const Config = {
     speedLineLength: 0.05,
     boomDuration: 0.55,
     boomMaxRadius: 45,
+    /** Size of the shared particle pool; the oldest particle is recycled when it is full. */
+    maxParticles: 700,
+    /** Multiplies every burst's particle count; quality presets lower it. */
+    particleScale: 1,
+    /** Downward acceleration applied to debris, m/s². */
+    particleGravity: 18,
+    maxShockRings: 4,
+    /** Seconds between smoke puffs behind a missile or a badly damaged drone. */
+    smokeInterval: 0.035,
+    damageFlashTime: 0.35,
   },
   audio: {
     masterVolume: 0.6,

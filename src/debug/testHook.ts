@@ -47,6 +47,7 @@ export interface TestHook {
   readonly enemies: EnemySnapshot[];
   /** Enemy bullets and missiles currently in flight. */
   readonly enemyShots: number;
+  readonly particles: number;
   damagePlayer(amount: number): void;
   /** Starts the simulation without pointer lock, which headless browsers may refuse. */
   start(): void;
@@ -76,6 +77,7 @@ export function installTestHook(sources: {
   camera: () => { fov: number; distance: number; roll: number };
   combat: CombatController;
   enemies: EnemyManager;
+  particles: () => number;
 }): void {
   let errorCount = 0;
   window.addEventListener('error', () => errorCount++);
@@ -142,6 +144,9 @@ export function installTestHook(sources: {
     get enemyShots() {
       const { bullets, missiles } = sources.enemies.fire;
       return bullets.filter((b) => b.active).length + missiles.filter((m) => m.active).length;
+    },
+    get particles() {
+      return sources.particles();
     },
     damagePlayer: (amount) => player.damage(amount),
     start: () => store.getState().setPhase('running'),

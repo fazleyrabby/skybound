@@ -208,6 +208,8 @@ test('combat: blast and punch a training dummy', async ({ page }) => {
     await hold('punch', false);
     expect((await dummy()).alive).toBe(false);
   }).toPass({ timeout: 20_000 });
+  // Destroying it throws an explosion.
+  expect(await page.evaluate(() => window.__SKYBOUND__!.particles)).toBeGreaterThan(20);
   await expect.poll(async () => (await dummy()).alive, { timeout: 10_000 }).toBe(true);
 
   // Lock-on pins the target.
@@ -224,6 +226,7 @@ test('combat: blast and punch a training dummy', async ({ page }) => {
   await hold('lockOn', false);
 
   await page.evaluate(() => window.__SKYBOUND__!.damagePlayer(30));
+  await expect(page.locator('#damage-flash')).not.toHaveCSS('opacity', '0');
   expect(await page.evaluate(() => window.__SKYBOUND__!.player.health)).toBe(70);
   expect(await page.evaluate(() => window.__SKYBOUND__!.errorCount)).toBe(0);
 });

@@ -35,6 +35,11 @@ export class Missile implements Damageable, Bullet {
     return this.alive;
   }
 
+  /** A missile in flight always trails smoke. */
+  get smoking(): boolean {
+    return this.alive;
+  }
+
   set active(value: boolean) {
     this.alive = value;
   }

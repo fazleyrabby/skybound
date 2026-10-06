@@ -18,6 +18,7 @@ export interface WorldQuery {
 
 const BASE_RADIUS = 1.6;
 const SKIN = 0.05;
+const SMOKE_BELOW = 0.4;
 const ZERO = new Vector3();
 const move = new Vector3();
 
@@ -53,6 +54,11 @@ export class Drone implements Damageable {
   telegraph = 0;
   /** Seconds since last hit, for the view's flash. */
   sinceHit = Infinity;
+
+  /** Badly damaged drones trail smoke. */
+  get smoking(): boolean {
+    return this.alive && this.health < this.maxHealth * SMOKE_BELOW;
+  }
 
   // AI bookkeeping, owned by EnemyAI.
   thinkTimer = 0;

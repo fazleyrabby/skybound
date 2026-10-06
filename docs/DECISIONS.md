@@ -2,6 +2,14 @@
 
 Short dated entries. Newest first.
 
+## 2026-10-06 — Phase 6
+
+- **Particles are solid-colour cubes that shrink away, not additive sprites.** Additive blending washed every colour to white against the daytime sky. Revisit with soft sprites and bloom in the graphics pass.
+- **One particle pool for everything** (700, one draw call). When full the oldest particle is recycled, so a big fight degrades instead of allocating.
+- **Effects are driven only by events and by a `smoking` flag** on drones and missiles; no effect code in gameplay.
+- **No energy trail or boost trail on the hero yet.** The earlier 1 px trail was removed on feedback; a ribbon needs the hero model to anchor to.
+- **Visual check of this phase was a headless screenshot**, because the in-app browser pane was hidden and not animating.
+
 ## 2026-10-06 — Phase 5
 
 - **Six hostile drones on fixed patrol posts, respawning 20 s after destruction.** A stand-in until the event system (Phase 8) decides when and where enemies appear. Posts are kept away from the spawn roof so free flight starts in peace.

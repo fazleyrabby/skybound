@@ -1,6 +1,6 @@
 # Architecture
 
-State as of Phase 5. Update this when a phase adds or changes a system.
+State as of Phase 6. Update this when a phase adds or changes a system.
 
 ## Boot
 
@@ -91,6 +91,8 @@ All of this reads `PlayerState` and listens on `EventBus<GameEvents>` (`player:s
 
 - `camera/CameraRig.ts` — orbit on aim, distance and FOV by speed, sphere-cast collision (pull in at once, ease out), landing dip, capped roll, trauma shake (`CameraShake.ts`). Everything is damped; a unit test asserts no per-frame jump.
 - `vfx/` — `SpeedLines` (camera-attached streaks aligned to velocity), `SonicBoom`, grouped by `FlightVfx`.
+- `vfx/ParticleSystem.ts` — one pooled instanced mesh (700 solid-colour cubes, one draw call) shared by every effect; oldest particle recycled when full. `vfx/ShockRings.ts` — pooled camera-facing rings. `vfx/CombatEffects.ts` — maps combat events to bursts: hit sparks, explosions with falling debris, muzzle flashes, wall impacts, smoke behind missiles and crippled drones.
+- `ui/DamageFlash.ts` — red vignette on taking damage.
 - `audio/FlightAudio.ts` — synthesized wind, rumble, boom and impact. No audio files.
 - `ui/StartScreen.ts` — click-to-fly / paused gate. `ui/HUD.ts` — health and energy bars that fade when full. `ui/TargetReticle.ts` — crosshair and target marker.
 - `enemies/DroneView.ts`, `rendering/ProjectileRenderer.ts` — graybox drone with hit flash and health bar; instanced blast bolts.
