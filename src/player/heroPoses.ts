@@ -1,3 +1,4 @@
+import { Config } from '../core/Config';
 import type { PlayerState } from './PlayerState';
 
 /**
@@ -36,6 +37,7 @@ export type PoseName =
   | 'idle'
   | 'walkA'
   | 'walkB'
+  | 'jump'
   | 'fall'
   | 'land'
   | 'hover'
@@ -46,7 +48,8 @@ export type PoseName =
   | 'dive'
   | 'charge'
   | 'punch'
-  | 'blast';
+  | 'blast'
+  | 'damage';
 
 export const POSES: Record<PoseName, Pose> = {
   idle: {
@@ -75,6 +78,18 @@ export const POSES: Record<PoseName, Pose> = {
     'upper_arm.L': [-0.45, 0, 0.08],
     'forearm.R': [-0.5, 0, 0],
     'forearm.L': [-0.7, 0, 0],
+  },
+  jump: {
+    torso: [0.08, 0, 0],
+    head: [-0.15, 0, 0],
+    'upper_arm.L': [-0.65, 0, 0.2],
+    'upper_arm.R': [0.4, 0, -0.2],
+    'forearm.L': [-1.1, 0, 0],
+    'forearm.R': [-0.75, 0, 0],
+    'thigh.L': [-0.65, 0, 0],
+    'shin.L': [1.0, 0, 0],
+    'thigh.R': [0.2, 0, 0],
+    'shin.R': [0.5, 0, 0],
   },
   fall: {
     'upper_arm.L': [-0.2, 0, 0.95],
@@ -202,30 +217,22 @@ export const POSES: Record<PoseName, Pose> = {
     'upper_arm.L': [0.1, 0, 0.3],
     'forearm.L': [-0.5, 0, 0],
   },
+  damage: {
+    torso: [-0.18, 0, 0.12],
+    head: [0.25, 0, 0],
+    'upper_arm.L': [-0.6, 0, 0.5],
+    'upper_arm.R': [-0.5, 0, -0.4],
+    'forearm.L': [-1.2, 0, 0],
+    'forearm.R': [-1.0, 0, 0],
+    'thigh.L': [-0.3, 0, 0],
+    'shin.L': [0.6, 0, 0],
+    'thigh.R': [0.1, 0, 0],
+    'shin.R': [0.35, 0, 0],
+  },
 };
 
 /** How quickly joints move into each pose, 1/s. Attacks snap; flight eases. */
-export const POSE_RESPONSE: Record<PoseName, number> = {
-  idle: 10,
-  walkA: 14,
-  walkB: 14,
-  fall: 8,
-  land: 22,
-  hover: 6,
-  ascend: 8,
-  descend: 8,
-  fly: 7,
-  boost: 9,
-  dive: 8,
-  charge: 16,
-  punch: 34,
-  blast: 30,
-};
-
-const WALK_MIN_SPEED = 0.6;
-/** Vertical speed, with little forward speed, that reads as rising or coming down rather than hovering. */
-const VERTICAL_POSE_SPEED = 4;
-const VERTICAL_POSE_MAX_CRUISE = 12;
+export const POSE_RESPONSE: Record<PoseName, number> = Config.hero.poseResponse;
 
 /** The pose flight and ground state call for, before any attack overrides it. */
 export function movementPose(state: PlayerState, stridePhase: number): PoseName {
@@ -233,23 +240,25 @@ export function movementPose(state: PlayerState, stridePhase: number): PoseName 
     case 'LANDING':
       return 'land';
     case 'GROUND':
-      if (Math.hypot(state.velocity.x, state.velocity.z) < WALK_MIN_SPEED) return 'idle';
+      if (Math.hypot(state.velocity.x, state.velocity.z) < Config.hero.walkMinSpeed) return 'idle';
       return Math.sin(stridePhase) > 0 ? 'walkA' : 'walkB';
     case 'JUMPING':
-      return 'fall';
+      return state.velocity.y > 0 ? 'jump' : 'fall';
     case 'HOVERING':
-      if (state.cruise.length() < VERTICAL_POSE_MAX_CRUISE) {
-        if (state.velocity.y < -VERTICAL_POSE_SPEED) return 'descend';
-        if (state.velocity.y > VERTICAL_POSE_SPEED) return 'ascend';
-      }
-      return 'hover';
+      return hoverPose(state);
     case 'BOOSTING':
       return state.diving ? 'dive' : 'boost';
     case 'FLYING':
       // Space or C alone still counts as FLYING by speed; keep the hero upright.
-      if (state.cruise.length() < VERTICAL_POSE_MAX_CRUISE) {
-        return state.velocity.y < 0 ? 'descend' : 'ascend';
-      }
+      if (state.cruise.length() < Config.hero.verticalPoseMaxCruise) return hoverPose(state);
       return state.diving ? 'dive' : 'fly';
   }
+}
+
+function hoverPose(state: PlayerState): PoseName {
+  if (state.cruise.length() < Config.hero.verticalPoseMaxCruise) {
+    if (state.velocity.y < -Config.hero.verticalPoseSpeed) return 'descend';
+    if (state.velocity.y > Config.hero.verticalPoseSpeed) return 'ascend';
+  }
+  return 'hover';
 }

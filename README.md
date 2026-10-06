@@ -2,7 +2,7 @@
 
 Browser-based 3D superhero flight game. Working title. See [spec.md](spec.md).
 
-Status: Phases 0–2 — a placeholder hero flying around a graybox test block, with camera, speed effects and synthesized audio. Flight feel is being tuned.
+Status: playable vertical slice. Fly around Nova City, fight drones, respond to drone attacks, play three missions (First Flight, Drone Swarm, Titan). Graybox city, one modelled hero, synthesized audio. Most of it has not been play-tested by a person yet; see "Open verification" in [docs/DECISIONS.md](docs/DECISIONS.md).
 
 ## Run
 
@@ -11,7 +11,7 @@ pnpm install
 pnpm dev
 ```
 
-Open http://localhost:5173 and click to fly. Controls are listed on the start screen. F3 toggles the performance overlay; Backquote opens the tuning panel.
+Open http://localhost:5173 and click "Click to fly". Controls, settings and the mission list are on the title and pause screens. F3 toggles the performance overlay; Backquote opens the debug menu.
 
 ## Check
 

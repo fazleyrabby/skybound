@@ -25,6 +25,15 @@ export const Config = {
     clearColor: 0x8fb8e8,
     fogNear: 600,
     fogFar: 6500,
+    /** Dynamic resolution never drops below this pixel ratio. Set by the quality preset. */
+    minPixelRatio: 1,
+    /** Frame time the adaptive quality system tries to hold, ms. */
+    targetFrameMs: 16.7,
+    /** One shadow-casting light whose frustum follows the player (spec section 32). */
+    shadows: 1,
+    shadowMapSize: 2048,
+    /** Half width of the area around the player that receives shadows, metres. */
+    shadowRange: 170,
   },
   input: {
     /** Radians of aim per pixel of mouse movement. */
@@ -55,8 +64,6 @@ export const Config = {
     walkSpeed: 6,
     sprintSpeed: 12,
     response: 12,
-    /** Constant downward speed while grounded, so ground contact is detected every step. */
-    stickSpeed: 2,
     jumpSpeed: 9,
     gravity: -25,
     terminalSpeed: 80,
@@ -65,6 +72,46 @@ export const Config = {
     /** Time off the ground before walking off an edge counts as falling. */
     coyoteTime: 0.12,
     landingTime: 0.15,
+  },
+  /** Presentation only: hero silhouette and animation. */
+  hero: {
+    tiltFullSpeed: 45,
+    maxTilt: 0.94,
+    orientationResponse: 10,
+    /** Release the visual crouch offset smoothly when leaving a surface. */
+    groundReleaseResponse: 14,
+    minLeanSpeed: 1,
+    stridePerMetre: 2.6,
+    walkMinSpeed: 0.6,
+    verticalPoseSpeed: 4,
+    verticalPoseMaxCruise: 12,
+    punchHold: 0.24,
+    blastHold: 0.2,
+    landingHold: 0.55,
+    damageHold: 0.22,
+    chargeShownAbove: 0.35,
+    /** Body roll into an actual travel turn; looking around alone never banks it. */
+    bankPerTurnRate: 0.16,
+    bankMax: 25 * DEG,
+    bankResponse: 6,
+    poseResponse: {
+      idle: 10,
+      walkA: 14,
+      walkB: 14,
+      jump: 12,
+      fall: 8,
+      land: 22,
+      hover: 6,
+      ascend: 8,
+      descend: 8,
+      fly: 7,
+      boost: 9,
+      dive: 8,
+      charge: 16,
+      punch: 34,
+      blast: 30,
+      damage: 24,
+    },
   },
   flight: {
     /** Upper bounds of the speed tiers (spec section 11), in m/s. */
@@ -171,17 +218,37 @@ export const Config = {
     /** Seconds between smoke puffs behind a missile or a badly damaged drone. */
     smokeInterval: 0.035,
     damageFlashTime: 0.35,
+    /** 1 normally; 0 with the reduce-flashes setting. Scales bright full-screen and burst flashes. */
+    flashScale: 1,
   },
   audio: {
     masterVolume: 0.6,
+    /** Bus levels under the master; the settings screen will expose these. */
+    musicVolume: 0.5,
+    sfxVolume: 1,
     windVolume: 0.5,
     windMinCutoff: 180,
     windMaxCutoff: 2600,
     rumbleVolume: 0.35,
     boomVolume: 0.9,
     impactVolume: 0.7,
+    /** Rush of air when passing close to buildings at speed (spec section 40). */
+    whooshVolume: 0.45,
+    /** Surfaces nearer than this, to either side or below, count as close. */
+    whooshRange: 30,
+    /** Below this speed there is no whoosh. */
+    whooshMinSpeed: 30,
+    /** Street hum heard near the ground inside the city. */
+    cityVolume: 0.12,
+    cityMaxAltitude: 160,
+    rainVolume: 0.3,
     /** How quickly the continuous layers follow speed changes. */
     response: 6,
+    /** Beats per minute while exploring or fighting, and in the boss fight. */
+    musicTempo: 96,
+    musicBossTempo: 132,
+    /** How fast the music follows a change in intensity, 1/s. */
+    musicResponse: 0.6,
   },
   hud: {
     /** HUD km/h = world m/s * 3.6 * this (spec section 11). */
@@ -320,6 +387,63 @@ export const Config = {
     maxBullets: 96,
     maxMissiles: 12,
   },
+  titan: {
+    /** Sized for a 4-6 minute fight (spec section 17). Tune by playing. */
+    maxHealth: 9000,
+    radius: 14,
+    /** Health fractions at which phases 2 and 3 begin. Each is a checkpoint. */
+    phase2At: 0.7,
+    phase3At: 0.3,
+    /** Seconds Titan reels, invulnerable, when a phase breaks. */
+    phaseStagger: 2.2,
+    /** Share of damage the hull takes in each phase; weak points take more. */
+    hullArmor1: 0.35,
+    hullArmor2: 0.5,
+    hullArmor3: 0.6,
+    weakMultiplier: 1.5,
+    reactorMultiplier: 2.5,
+    weakRadius: 3.5,
+    speed1: 18,
+    speed2: 30,
+    speed3: 46,
+    accel: 0.8,
+    turnRate: 0.9,
+    waypointReach: 30,
+
+    gunRange: 450,
+    gunInterval: 2.6,
+    gunBurst: 10,
+    gunBurstInterval: 0.07,
+    missileInterval: 7,
+    missileSalvo: 3,
+    laserInterval: 11,
+    /** Warning time before the beam fires. */
+    laserCharge: 1.3,
+    laserDuration: 2.6,
+    /** The beam tracks the player this slowly, so it can be out-flown, rad/s. */
+    laserTurnRate: 0.45,
+    laserDps: 28,
+    laserRadius: 3.5,
+    laserLength: 600,
+    meleeRange: 38,
+    meleeWindup: 0.7,
+    meleeDamage: 28,
+    meleeKnockback: 90,
+    meleeCooldown: 4,
+    pulseInterval: 10,
+    pulseWindup: 1.1,
+    pulseSpeed: 110,
+    pulseMaxRadius: 150,
+    /** The shockwave hurts within this distance of its expanding shell. */
+    pulseThickness: 7,
+    pulseDamage: 22,
+
+    /** Seconds the camera is drawn to Titan when it appears. */
+    introTime: 3,
+    introAimResponse: 2.5,
+    dyingTime: 3.5,
+    reward: 2000,
+  },
   events: {
     /** Seconds of free flight before the first event. */
     firstDelay: 25,
@@ -339,6 +463,21 @@ export const Config = {
     rewardPerSecond: 2,
     /** How long the result stays on screen before the next quiet period starts. */
     resultHold: 4,
+  },
+  missions: {
+    /** Fly within this distance of a checkpoint to pass it, unless the checkpoint sets its own. */
+    checkpointRadius: 16,
+    /** Stand this close to a mission beacon to be offered it. */
+    beaconRange: 7,
+    firstFlightReward: 300,
+    /** Speed, in m/s, the First Flight boost step asks for. */
+    firstFlightBoostSpeed: 120,
+    droneSwarmReward: 800,
+    droneSwarmTotal: 10,
+    /** Drones in the air at once during Drone Swarm. */
+    droneSwarmWave: 4,
+    /** How long the result stays on screen. */
+    resultHold: 5,
   },
   world: {
     seed: 1337,
@@ -373,6 +512,24 @@ export const Config = {
     pedestrianMaxAltitude: 140,
     pedestrianRange: 260,
     streetLightSpacing: 40,
+
+    /** Real seconds for a full day. */
+    dayLength: 900,
+    startHour: 10,
+    /** Seconds of clear weather between showers, and how long a shower lasts. */
+    clearMin: 200,
+    clearMax: 420,
+    rainMin: 60,
+    rainMax: 130,
+    /** How quickly rain builds and fades, 1/s. */
+    rainResponse: 0.25,
+    rainStreaks: 600,
+  },
+  /** Density multipliers set by the quality preset (spec section 37). 1 is full. */
+  quality: {
+    vehicles: 1,
+    pedestrians: 1,
+    rain: 1,
   },
   debug: {
     /** Overlay refresh rate; low so it does not perturb what it measures. */

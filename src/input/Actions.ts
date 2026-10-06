@@ -9,7 +9,9 @@ export type Action =
   | 'punch'
   | 'blast'
   | 'dash'
-  | 'lockOn';
+  | 'lockOn'
+  | 'interact'
+  | 'abandon';
 
 /**
  * Physical key (`KeyboardEvent.code`) to action, so WASD works on any layout.
@@ -26,6 +28,8 @@ export const KEY_BINDINGS: Readonly<Record<string, Action>> = {
   ShiftRight: 'boost',
   KeyF: 'dash',
   KeyQ: 'lockOn',
+  KeyE: 'interact',
+  KeyX: 'abandon',
 };
 
 /** `MouseEvent.button` to action. */

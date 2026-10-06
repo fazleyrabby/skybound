@@ -33,6 +33,9 @@ export class WorldEvents {
   /** Reward banked by the event that just ended, for the result display. */
   lastReward = 0;
 
+  /** While true no new event starts. Missions set this so the two do not overlap. */
+  suspended = false;
+
   private readonly rng: Rng;
   private wait = Config.events.firstDelay;
   private lastSite: EventSite | null = null;
@@ -51,6 +54,7 @@ export class WorldEvents {
 
     switch (this.phase) {
       case 'IDLE':
+        if (this.suspended) return;
         this.wait -= dt;
         if (this.wait <= 0) this.spawn();
         return;
@@ -78,6 +82,14 @@ export class WorldEvents {
         this.wait = this.rng.range(cfg.minGap, cfg.maxGap);
         return;
     }
+  }
+
+  /** Ends the current event quietly: no result, no reward. */
+  abort(): void {
+    this.current?.cleanup();
+    this.current = null;
+    this.phase = 'IDLE';
+    this.wait = Config.events.minGap;
   }
 
   /** Starts an event now, optionally at a given site. For the debug menu and tests. */

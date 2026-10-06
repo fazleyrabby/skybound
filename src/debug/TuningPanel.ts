@@ -6,6 +6,7 @@ const SECTIONS = [
   'flight',
   'camera',
   'ground',
+  'hero',
   'vfx',
   'audio',
   'gamepad',
@@ -14,12 +15,14 @@ const SECTIONS = [
   'vitals',
   'enemies',
   'events',
+  'missions',
+  'titan',
 ] as const;
 const SLIDER_STEPS = 300;
 
 /**
  * Live sliders for every tunable in the listed Config sections (spec section 46).
- * Backquote toggles it. Opening releases pointer lock, which pauses the game;
+ * Opened from the debug menu (Backquote, then 9). Opening releases pointer lock, which pauses the game;
  * click the game to resume with the new values. "Copy JSON" exports the result
  * so good values can be pasted back into Config.ts.
  */
@@ -66,11 +69,9 @@ export class TuningPanel {
     }
 
     parent.appendChild(this.element);
-    window.addEventListener('keydown', this.onKeyDown);
   }
 
   dispose(): void {
-    window.removeEventListener('keydown', this.onKeyDown);
     this.element.remove();
   }
 
@@ -144,14 +145,12 @@ export class TuningPanel {
     }
   }
 
-  private readonly onKeyDown = (event: KeyboardEvent): void => {
-    if (event.code !== 'Backquote') return;
-    event.preventDefault();
+  /** Shows or hides the panel. Opening releases pointer lock: sliders need the cursor. */
+  toggle(): void {
     this.visible = !this.visible;
     this.element.style.display = this.visible ? 'block' : 'none';
-    // Sliders need the cursor back.
     if (this.visible) document.exitPointerLock();
-  };
+  }
 }
 
 function button(text: string, onClick: () => void): HTMLButtonElement {

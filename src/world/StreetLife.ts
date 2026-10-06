@@ -110,6 +110,7 @@ export class StreetLife {
       this.vehicleColors,
       lead,
       (x, z) => Math.hypot(x - player.x, z - player.z) < VEHICLE_RANGE,
+      Config.quality.vehicles,
     );
 
     this.visiblePedestrians =
@@ -122,6 +123,7 @@ export class StreetLife {
             (x, z) =>
               this.chunks.isLiveAt(x, z) &&
               Math.hypot(x - player.x, z - player.z) < cfg.pedestrianRange,
+            Config.quality.pedestrians,
           );
   }
 }

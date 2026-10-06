@@ -61,6 +61,11 @@ export class CameraRig {
             : cfg.heavyTrauma,
       );
     });
+    events.on('boss:phase', () => this.shake.add(0.8));
+    events.on('boss:defeated', () => this.shake.add(1));
+    events.on('boss:attack', ({ kind }) => {
+      if (kind === 'laserFire' || kind === 'pulse') this.shake.add(0.3);
+    });
     events.on('player:damaged', ({ amount }) => {
       this.shake.add(amount * Config.camera.damageTraumaPerPoint);
     });

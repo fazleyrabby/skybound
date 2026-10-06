@@ -1,6 +1,10 @@
 import { Vector3 } from 'three';
 import type { LoopStats } from '../core/GameLoop';
+import type { BossFight } from '../enemies/boss/BossFight';
 import type { EnemyManager } from '../enemies/EnemyManager';
+import type { MissionManager } from '../missions/MissionManager';
+import type { DayNightSystem } from '../world/DayNightSystem';
+import type { WeatherSystem, Weather } from '../world/WeatherSystem';
 import type { WorldEvents } from '../world/WorldEvents';
 import type { CombatController } from '../player/CombatController';
 import { store, type GamePhase } from '../core/store';
@@ -8,6 +12,7 @@ import type { Action } from '../input/Actions';
 import type { InputManager } from '../input/InputManager';
 import type { Player } from '../player/Player';
 import type { FlightState } from '../player/PlayerState';
+import type { QualityPreset } from '../rendering/QualitySettings';
 import type { RenderStats } from '../rendering/Renderer';
 
 const ZERO = new Vector3();
@@ -31,6 +36,36 @@ export interface WorldSnapshot {
   totalChunks: number;
   vehicles: number;
   pedestrians: number;
+  /** Time of day, 0..24. */
+  hour: number;
+  /** 0 by day .. 1 at night. */
+  night: number;
+  /** 0 dry .. 1 full rain. */
+  rain: number;
+}
+
+export interface BossSnapshot {
+  alive: boolean;
+  state: string;
+  phase: number;
+  health: number;
+  targets: number;
+  laser: string;
+  defeated: boolean;
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface MissionSnapshot {
+  active: string | null;
+  objective: string | null;
+  progress: string | null;
+  target: { x: number; y: number; z: number; radius: number; kind: string } | null;
+  available: string[];
+  offered: string | null;
+  completed: string[];
+  result: string | null;
 }
 
 export interface EnemySnapshot {
@@ -60,6 +95,7 @@ export interface TestHook {
   /** Enemy bullets and missiles currently in flight. */
   readonly enemyShots: number;
   readonly particles: number;
+  readonly emittedParticles: number;
   readonly world: WorldSnapshot;
   /** Whether the hero model loaded, how many of its joints were found, and its pose. */
   readonly hero: { model: boolean; joints: number; pose: string | null };
@@ -67,6 +103,24 @@ export interface TestHook {
   /** The current world event, if any, and the score so far. */
   readonly event: { phase: string; site: string | null; status: string | null; timeLeft: number };
   readonly score: number;
+  readonly mission: MissionSnapshot;
+  readonly boss: BossSnapshot;
+  /** Whether sound is playing, the music intensity, and how close the hero is to a surface. */
+  readonly audio: { running: boolean; intensity: number; whoosh: number };
+  readonly quality: { preset: QualityPreset; auto: boolean; pixelRatio: number };
+  /** Picks a quality preset by hand, or 'auto' to let it adapt. */
+  setQuality(choice: QualityPreset | 'auto'): void;
+  /** Milliseconds the simulation took on the last frame. */
+  readonly simMs: number;
+  /** Jumps the clock to an hour (0..24) and holds it there. */
+  setTime(hour: number): void;
+  setWeather(weather: Weather): void;
+  /** Starts the Titan fight directly, outside any mission. */
+  spawnBoss(): void;
+  /** Damages Titan as a weak-point hit would, ignoring armour. */
+  damageBoss(amount: number): void;
+  startMission(id: string): boolean;
+  abandonMission(): void;
   /** Starts a world event now, optionally at a given site index. */
   triggerEvent(siteIndex?: number): boolean;
   /** Destroys an enemy outright, as if the player had. */
@@ -100,9 +154,20 @@ export function installTestHook(sources: {
   combat: CombatController;
   enemies: EnemyManager;
   particles: () => number;
+  emittedParticles: () => number;
   world: () => WorldSnapshot;
   hero: () => { model: boolean; joints: number; pose: string | null };
   worldEvents: WorldEvents;
+  missions: MissionManager;
+  boss: BossFight;
+  audio: () => { running: boolean; intensity: number; whoosh: number };
+  dayNight: DayNightSystem;
+  weather: WeatherSystem;
+  quality: {
+    get(): { preset: QualityPreset; auto: boolean; pixelRatio: number };
+    set(choice: QualityPreset | 'auto'): void;
+  };
+  simMs: () => number;
 }): void {
   let errorCount = 0;
   window.addEventListener('error', () => errorCount++);
@@ -174,6 +239,9 @@ export function installTestHook(sources: {
     get particles() {
       return sources.particles();
     },
+    get emittedParticles() {
+      return sources.emittedParticles();
+    },
     get world() {
       return sources.world();
     },
@@ -193,6 +261,53 @@ export function installTestHook(sources: {
     get score() {
       return store.getState().score;
     },
+    get mission() {
+      const missions = sources.missions;
+      return {
+        active: missions.active?.id ?? null,
+        objective: missions.objective?.label ?? null,
+        progress: missions.objective?.progress() ?? null,
+        target: missions.target,
+        available: missions.available.map((mission) => mission.id),
+        offered: missions.offered?.id ?? null,
+        completed: store.getState().missionsCompleted,
+        result: missions.result?.outcome ?? null,
+      };
+    },
+    get boss() {
+      const { titan, attacks, defeated, targets } = sources.boss;
+      return {
+        alive: titan.alive,
+        state: titan.state,
+        phase: titan.phase,
+        health: titan.healthFraction,
+        targets: targets.length,
+        laser: attacks.laserState,
+        defeated,
+        x: titan.position.x,
+        y: titan.position.y,
+        z: titan.position.z,
+      };
+    },
+    get audio() {
+      return sources.audio();
+    },
+    get quality() {
+      return sources.quality.get();
+    },
+    setQuality: (choice) => sources.quality.set(choice),
+    get simMs() {
+      return sources.simMs();
+    },
+    setTime: (hour) => {
+      sources.dayNight.frozen = true;
+      sources.dayNight.setHour(hour);
+    },
+    setWeather: (weather) => sources.weather.set(weather),
+    spawnBoss: () => sources.boss.start(),
+    damageBoss: (amount) => sources.boss.titan.takeDamage(amount),
+    startMission: (id) => sources.missions.start(id),
+    abandonMission: () => sources.missions.abandon(),
     triggerEvent: (siteIndex) => sources.worldEvents.trigger(siteIndex),
     destroyEnemy: (id) => {
       const drone = sources.enemies.drones.find((candidate) => candidate.id === id);

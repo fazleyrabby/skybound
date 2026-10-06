@@ -24,11 +24,11 @@ function steerHorizontal(
   state.velocity.z = damp(state.velocity.z, wish.z, response, dt);
 }
 
-/** Walking and sprinting. Keeps a small downward speed so ground contact is detected each step. */
+/** Walking and sprinting. Height is handled by the controller's ground snap, not by pushing down. */
 export function updateGround(state: PlayerState, input: PlayerInput, dt: number): void {
   const cfg = Config.ground;
   steerHorizontal(state, input, input.boost ? cfg.sprintSpeed : cfg.walkSpeed, cfg.response, dt);
-  state.velocity.y = -cfg.stickSpeed;
+  state.velocity.y = 0;
 }
 
 /** Ballistic jump or fall with a little air control. */
@@ -43,5 +43,5 @@ export function updateLanding(state: PlayerState, dt: number): void {
   const cfg = Config.ground;
   state.velocity.x = damp(state.velocity.x, 0, cfg.response, dt);
   state.velocity.z = damp(state.velocity.z, 0, cfg.response, dt);
-  state.velocity.y = -cfg.stickSpeed;
+  state.velocity.y = 0;
 }

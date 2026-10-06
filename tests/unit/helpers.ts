@@ -11,7 +11,7 @@ export const STEP = 1 / 60;
 export function createFloorMover(floorY: number): CollisionMover {
   const position = new Vector3();
   return {
-    move(desired: Vector3, _snap: boolean, out: MoveResult): void {
+    move(desired: Vector3, out: MoveResult): void {
       const targetY = position.y + desired.y;
       const blocked = targetY < floorY;
       out.movement.set(desired.x, blocked ? floorY - position.y : desired.y, desired.z);
@@ -19,6 +19,13 @@ export function createFloorMover(floorY: number): CollisionMover {
       out.hitCount = blocked ? 1 : 0;
       out.hitNormals[0]?.set(0, 1, 0);
       position.add(out.movement);
+    },
+    groundOffset(maxDrop: number): number | null {
+      const gap = position.y - floorY;
+      return gap <= maxDrop ? -gap : null;
+    },
+    shiftY(dy: number): void {
+      position.y += dy;
     },
     teleport(target: Vector3): void {
       position.copy(target);

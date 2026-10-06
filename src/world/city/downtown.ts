@@ -145,6 +145,18 @@ function addTower(
     baseY += height * share;
   });
   if (top) addRoofPlant(boxes, rng, top, rng.next() < 0.45);
+
+  // Some towers carry a billboard on one face, a few storeys up: colour by day, light by night.
+  if (rng.next() < 0.4) {
+    const sign = Palette.signs[Math.floor(rng.next() * Palette.signs.length)] ?? Palette.signs[0];
+    const side = rng.next() < 0.5 ? -1 : 1;
+    const height = rng.range(8, 16);
+    boxes.add(x + side * (width / 2 + 0.35), z, 0.5, depth * rng.range(0.4, 0.7), height, sign, {
+      baseY: rng.range(20, 60),
+      solid: false,
+      glow: true,
+    });
+  }
 }
 
 /** Air handlers and, on some roofs, a mast. Decoration only: nothing to snag on. */

@@ -17,6 +17,8 @@ const UP = new Vector3(0, 1, 0);
  * instance) as one instanced mesh of boxes. One draw call per kind.
  */
 export class FollowerRenderer {
+  /** Shared by every instance; the atmosphere tints it at night. */
+  readonly material = new MeshStandardMaterial({ roughness: 0.7 });
   private readonly mesh: InstancedMesh;
   private readonly matrix = new Matrix4();
   private readonly position = new Vector3();
@@ -30,11 +32,7 @@ export class FollowerRenderer {
     /** Box size: width, height, length along the direction of travel. */
     private readonly size: readonly [number, number, number],
   ) {
-    this.mesh = new InstancedMesh(
-      new BoxGeometry(1, 1, 1),
-      new MeshStandardMaterial({ roughness: 0.7 }),
-      Math.max(1, capacity),
-    );
+    this.mesh = new InstancedMesh(new BoxGeometry(1, 1, 1), this.material, Math.max(1, capacity));
     this.mesh.frustumCulled = false;
     this.mesh.count = 0;
     this.mesh.setColorAt(0, this.color);

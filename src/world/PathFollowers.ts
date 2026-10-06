@@ -88,9 +88,12 @@ export class PathFollowers {
     colors: Uint32Array,
     lead: number,
     visible: (x: number, z: number) => boolean,
+    /** Share of followers to consider, 0..1: the quality preset thins crowds with this. */
+    fraction = 1,
   ): number {
     let written = 0;
-    for (let i = 0; i < this.count; i++) {
+    const active = Math.round(this.count * Math.min(1, Math.max(0, fraction)));
+    for (let i = 0; i < active; i++) {
       const index = this.pathIndex[i] ?? 0;
       const path = this.paths[index];
       if (!path) continue;

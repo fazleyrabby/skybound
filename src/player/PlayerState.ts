@@ -22,6 +22,8 @@ export interface PlayerInput {
   blast: boolean;
   dashPressed: boolean;
   lockPressed: boolean;
+  interactPressed: boolean;
+  abandonPressed: boolean;
 }
 
 export function createPlayerInput(): PlayerInput {
@@ -37,6 +39,8 @@ export function createPlayerInput(): PlayerInput {
     blast: false,
     dashPressed: false,
     lockPressed: false,
+    interactPressed: false,
+    abandonPressed: false,
   };
 }
 

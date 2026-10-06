@@ -1,4 +1,5 @@
 import { createStore } from 'zustand/vanilla';
+import { DEFAULT_SETTINGS, type Settings } from './Settings';
 
 /** boot: loading. ready: waiting for the first click. paused: pointer lock was released. */
 export type GamePhase = 'boot' | 'ready' | 'running' | 'paused';
@@ -10,10 +11,16 @@ export interface GameState {
   score: number;
   eventsCompleted: number;
   eventsFailed: number;
+  /** Ids of missions finished at least once. */
+  missionsCompleted: string[];
+  settings: Settings;
   setPhase(phase: GamePhase): void;
   togglePerfOverlay(): void;
   /** Records the outcome of a world event and banks its reward. */
   recordEvent(outcome: 'success' | 'failure', reward: number): void;
+  completeMission(id: string, reward: number): void;
+  setSetting<K extends keyof Settings>(key: K, value: Settings[K]): void;
+  resetSettings(): void;
 }
 
 /**
@@ -26,8 +33,19 @@ export const store = createStore<GameState>()((set) => ({
   score: 0,
   eventsCompleted: 0,
   eventsFailed: 0,
+  missionsCompleted: [],
+  settings: { ...DEFAULT_SETTINGS },
   setPhase: (phase) => set({ phase }),
   togglePerfOverlay: () => set((s) => ({ perfOverlayVisible: !s.perfOverlayVisible })),
+  setSetting: (key, value) => set((s) => ({ settings: { ...s.settings, [key]: value } })),
+  resetSettings: () => set({ settings: { ...DEFAULT_SETTINGS } }),
+  completeMission: (id, reward) =>
+    set((s) => ({
+      score: s.score + reward,
+      missionsCompleted: s.missionsCompleted.includes(id)
+        ? s.missionsCompleted
+        : [...s.missionsCompleted, id],
+    })),
   recordEvent: (outcome, reward) =>
     set((s) => ({
       score: s.score + reward,

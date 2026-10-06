@@ -33,6 +33,15 @@ export interface GameEvents {
     z: number;
   };
   'world:eventEnded': { type: string; outcome: 'success' | 'failure'; reward: number };
+  'mission:started': { id: string; title: string };
+  /** A new objective became current. */
+  'mission:objective': { id: string; index: number; label: string };
+  'mission:ended': { id: string; outcome: 'complete' | 'abandoned'; reward: number };
+  'boss:spawned': { name: string };
+  /** A phase broke. `x, y, z` is where the armour came off. */
+  'boss:phase': { phase: number; x: number; y: number; z: number };
+  'boss:attack': { kind: 'laserCharge' | 'laserFire' | 'melee' | 'pulse' | 'salvo' };
+  'boss:defeated': { x: number; y: number; z: number };
   'enemy:destroyed': { id: number; x: number; y: number; z: number };
   'enemy:fired': { kind: 'bullet' | 'missile'; x: number; y: number; z: number };
   /** Enemy fire or a missile ended against the world, or a missile was shot down. */

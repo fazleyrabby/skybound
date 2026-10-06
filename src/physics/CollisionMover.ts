@@ -18,7 +18,15 @@ export interface MoveResult {
  */
 export interface CollisionMover {
   /** Sweeps by `desired` (metres), slides along obstacles, and writes the outcome to `out`. */
-  move(desired: Vector3, snapToGround: boolean, out: MoveResult): void;
+  move(desired: Vector3, out: MoveResult): void;
+  /**
+   * Looks for ground under the shape, up to `maxDrop` below it. Returns the
+   * vertical shift that would rest the shape on that ground (negative is down,
+   * positive lifts it out of a surface it has sunk into), or null if there is none.
+   */
+  groundOffset(maxDrop: number): number | null;
+  /** Moves the shape vertically without sweeping. Used with `groundOffset`. */
+  shiftY(dy: number): void;
   /** Moves the shape without sweeping. `position` is the capsule centre. */
   teleport(position: Vector3): void;
 }

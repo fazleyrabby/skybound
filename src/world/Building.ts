@@ -1,7 +1,15 @@
 import type { Rng } from '../utils/rng';
 
 export type District =
-  'downtown' | 'residential' | 'industrial' | 'park' | 'harbor' | 'highway' | 'surround' | 'street';
+  | 'downtown'
+  | 'residential'
+  | 'industrial'
+  | 'park'
+  | 'harbor'
+  | 'highway'
+  | 'surround'
+  | 'street'
+  | 'midtown';
 
 /**
  * A graybox box. Rendering and physics both consume this, so visuals and
@@ -23,6 +31,8 @@ export interface BuildingDescriptor {
   solid: boolean;
   /** Draw a window grid on the walls. For things that are actually buildings. */
   windows: boolean;
+  /** Lights up at night: lamp heads, signs, billboards. */
+  glow: boolean;
 }
 
 export interface BoxOptions {
@@ -30,6 +40,7 @@ export interface BoxOptions {
   baseY?: number;
   solid?: boolean;
   windows?: boolean;
+  glow?: boolean;
 }
 
 /** Collects boxes for one district, addressed by footprint centre, size and height. */
@@ -60,6 +71,7 @@ export class BoxBuilder {
       color,
       solid: options.solid ?? true,
       windows: options.windows ?? false,
+      glow: options.glow ?? false,
     };
     this.out.push(box);
     return box;

@@ -1,6 +1,6 @@
 # Architecture
 
-State as of Phase 8. Update this when a phase adds or changes a system.
+State as of Phase 15 (Phase 11 partly done, Phase 16 not started). Update this when a phase adds or changes a system.
 
 ## Boot
 
@@ -38,6 +38,10 @@ Aim versus heading: the mouse (or right stick) changes `aim`, which the camera o
 
 `public/assets/characters/aether.glb` is 14 rigid segments on a node hierarchy (torso, head, and three joints per limb), not a skinned mesh. It is built by `blender/characters/build_aether.py` and exported by `export_aether.py`; both run inside Blender. Animation is blended poses in code rather than authored clips: idle, two walk extremes, fall, land, hover, fly, boost, dive, charge, punch, blast. `rendering/AssetManager.ts` loads it through `assetManifest.ts`; a failed load falls back to the capsule.
 
+`HeroRig.setWalk()` blends continuously between the two stride extremes, driven by distance travelled and scaled down for small movement inputs. Upward jumps have their own pose; damage briefly interrupts movement. `PlayerView` banks the body from changes in travel heading, wraps heading differences across ±π, and keeps Space/C-only movement upright. A landing hold ends when walking or jumping resumes.
+
+An appearance group sits under the interpolated player root. On the ground, cached mesh bounds align its lowest posed point to the capsule's foot height; the offset eases away after take-off. This is presentation only: it changes neither the collision capsule nor the camera pivot, and is approximate contact rather than foot IK. Rates, thresholds and hold times live in `Config.hero`; its numeric controls are available in the tuning panel.
+
 ## Collision
 
 `physics/PhysicsWorld.ts` is the only module that imports Rapier. The player is a kinematic capsule moved by Rapier's `KinematicCharacterController`, which sweeps and slides, so nothing tunnels at any speed. `PlayerController` then removes the into-surface velocity, applies a scrape loss scaled by how head-on the hit was, and bounces with a short stagger on fast head-on hits (spec section 66). Gameplay depends on the `CollisionMover` interface, so unit tests use a fake floor and a separate suite runs against real Rapier in Node.
@@ -64,6 +68,16 @@ Land and ocean share one flat collider at y = 0; the ocean lies south and east o
 
 `rendering/BuildingRenderer.ts` patches the standard material: boxes whose descriptor has `windows: true` get a procedural window facade computed from the box's own size, so no UVs or textures are needed. Downtown towers are built in `world/city/downtown.ts` as podium, stepped tiers and non-solid rooftop plant.
 
+### Sky, light and weather
+
+- `world/DayNightSystem.ts` — the clock, and `sampleSky(hour)`: a pure function from time of day to light direction, colours, intensities, sky colours, a `night` factor and the share of windows lit. Keyframes for dawn, day, sunset and night, interpolated; continuous across midnight.
+- `world/WeatherSystem.ts` — clear or rain on a seeded timer; `rain` eases 0..1.
+- `rendering/Atmosphere.ts` — applies both: gradient sky dome with sun glow, hemisphere and directional light, one shadow map centred on the player and snapped to texels, fog that takes the horizon colour and closes in with rain, wet ground, night headlights, and the lit-window and night uniforms of the building shader.
+- `rendering/Water.ts` — the ocean shader: sine-wave normals with per-wave anti-aliasing, Fresnel sky reflection, sun glint, shore foam. Fed the same sky sample as the atmosphere.
+- `rendering/TreeRenderer.ts` — instanced canopies and trunks for two species, with wind sway. Placements come from `world/city/trees.ts`.
+- `vfx/Rain.ts` — streaks in a box that travels with the camera, moved by fall speed minus the hero's velocity.
+- Boxes flagged `glow` (lamp heads, billboards) light up in their own colour at night, in the same building shader.
+
 ### Street life
 
 - `world/city/roads.ts` — fixed list of straight roads: the downtown street grid, the elevated ring, the ocean bridge. `world/city/props.ts` lays asphalt strips and lamp posts along the streets as non-solid boxes in the shared building mesh.
@@ -78,6 +92,17 @@ Land and ocean share one flat collider at y = 0; the ocean lies south and east o
 - `world/events/WorldEvent.ts` — the interface an event type implements (`start`, `update`, `status`, `reward`, `cleanup`) and the list of sites. `DroneAttackEvent.ts` is the first type: deploy a squad from the reserve, succeed when all are destroyed.
 - Reserve drones: `EnemyManager.addReserve()` creates dormant drones up front; events `deploy()` and `dismiss()` them. Nothing is allocated when an event starts.
 - `ui/EventUI.ts` — banner, site marker that slides to the screen edge when out of view, result, score.
+
+## Missions
+
+- `missions/Objective.ts` — one step of a mission: `update()` returns true when met, plus a label, progress text and an optional target. Built-in kinds: take off, fly a ring course (tested against the path flown each step, so rings are not skipped at speed), reach a speed, land on a spot, destroy N drones in waves from the reserve.
+- `missions/Mission.ts` — missions as data: title, brief, reward, prerequisite, beacon position, and a function that builds fresh objectives. First Flight and Drone Swarm are defined here.
+- `missions/MissionManager.ts` — offers unlocked missions at their beacons (interact to start), steps the active one, settles the reward, supports abandon and replay. Suspends world events while a mission runs, since both use the drone reserve.
+- `rendering/MissionMarkers.ts` — beacon pillars, the ring at the current checkpoint, a flat ring on a landing spot. `ui/MissionUI.ts` — objective panel, target marker, beacon prompt, result. `ui/ScreenMarker.ts` is the shared label-pinned-to-a-world-point used by missions and events.
+
+## Save
+
+`save/SaveManager.ts` reads and writes one versioned JSON object under `skybound.save` through a `StorageAdapter`. Unreadable data is copied to `skybound.save.corrupt` and replaced with defaults; individual bad fields are repaired. `LocalStorageAdapter` guards every access, so the game runs without persistence where storage is unavailable. `Game.ts` loads into the store at boot and saves when score or completed missions change.
 
 `world/WorldBounds.ts` applies the soft limits from spec section 64 to the flight velocity channels: a headwind from 3 km that stops outward flight by 4 km and pushes back, and upward speed fading out between 1,500 and 2,000 m. `ui/BoundsWarning.ts` tells the player why.
 
@@ -109,6 +134,18 @@ Design rules from spec section 15 that the tests enforce: every drone is slower 
 
 Drones are not physics bodies; they query the world through the `WorldQuery` interface (`castRay`, `castSphere`), which tests fake.
 
+## Boss
+
+| File                                         | Role                                                                                                                                                                                     |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enemies/boss/Titan.ts`                      | State and damage rules. Hull is a `Damageable` with per-phase armour; `WeakPoint`s are separate `Damageable`s that forward damage at a multiplier. Health cannot skip a phase threshold. |
+| `enemies/boss/TitanAI.ts`                    | Movement: drop in for the reveal, then patrol the clear corridor above the ring road; phase 3 adds a run down the avenue canyon. Always turns to face the player.                        |
+| `enemies/boss/TitanAttacks.ts`               | Guns and missile salvos (phase 1), sweeping laser with a warning (phase 2), melee swipe and expanding pulse (phase 3). Uses the shared `EnemyFire` pools.                                |
+| `enemies/boss/BossFight.ts`                  | The encounter: reveal (eases the player's aim onto Titan), phase events, checkpoint restore when the player is knocked out, destruction sequence.                                        |
+| `enemies/boss/TitanView.ts`, `ui/BossBar.ts` | Graybox machine, armour plates that vanish in phase 2, weak-point glows, laser and pulse; health bar with phase notches and the name card.                                               |
+
+Phase thresholds are 70% and 30%. Each is a checkpoint: a knocked-out player resumes with Titan at the start of the current phase. The Titan mission (`DefeatBossObjective`) starts the fight and completes on `boss:defeated`.
+
 ## Presentation
 
 All of this reads `PlayerState` and listens on `EventBus<GameEvents>` (`player:state`, `player:impact`). Gameplay imports none of it.
@@ -117,19 +154,33 @@ All of this reads `PlayerState` and listens on `EventBus<GameEvents>` (`player:s
 - `vfx/` — `SpeedLines` (camera-attached streaks aligned to velocity), `SonicBoom`, grouped by `FlightVfx`.
 - `vfx/ParticleSystem.ts` — one pooled instanced mesh (700 solid-colour cubes, one draw call) shared by every effect; oldest particle recycled when full. `vfx/ShockRings.ts` — pooled camera-facing rings. `vfx/CombatEffects.ts` — maps combat events to bursts: hit sparks, explosions with falling debris, muzzle flashes, wall impacts, smoke behind missiles and crippled drones.
 - `ui/DamageFlash.ts` — red vignette on taking damage.
-- `audio/FlightAudio.ts` — synthesized wind, rumble, boom and impact. No audio files.
-- `ui/StartScreen.ts` — click-to-fly / paused gate. `ui/HUD.ts` — health and energy bars that fade when full. `ui/TargetReticle.ts` — crosshair and target marker.
+- `audio/AudioManager.ts` — the AudioContext, a master gain with music and effects buses, and the synthesis primitives (noise burst, tone run, pitch sweep, enveloped note). Nothing plays until `unlock()` runs from a user gesture. No audio files.
+- `audio/FlightAudio.ts` — continuous layers driven by flight: wind, boost rumble, a whoosh when passing close to surfaces at speed (three rays, ten times a second), city hum near street level.
+- `audio/SoundBank.ts` — every one-shot, as a mapping from game events to synthesis.
+- `audio/MusicManager.ts` — generative music scheduled on the audio clock. `notesForStep()` is the arrangement as a pure function: pad while exploring, bass and arpeggio in a fight, drums when intense, a darker progression and faster tempo for the boss.
+- `ui/Menus.ts` — click-to-fly / paused gate and menu tabs. `ui/HUD.ts` — health and energy bars that fade when full. `ui/TargetReticle.ts` — crosshair and target marker.
 - `enemies/DroneView.ts`, `rendering/ProjectileRenderer.ts` — graybox drone with hit flash and health bar; instanced blast bolts.
+
+## Quality
+
+`rendering/QualitySettings.ts` holds the five presets (MOBILE to ULTRA) as data, `writePreset()` which copies one into `Config`, and `AdaptiveQuality`, which is pure logic fed one frame time per frame. It trades resolution first, within the preset's range; if the lowest resolution is still slow for three seconds it drops a preset; with eight seconds of headroom at full resolution it tries the next one up, never past HIGH by itself. A manual choice fixes the preset and leaves dynamic resolution on. `Game.ts` applies changes: pixel ratio on the renderer, shadow settings on the atmosphere; density and particle multipliers are read from `Config` by the systems that use them.
 
 ## Input
 
 `input/InputManager.ts` maps keyboard (`KeyboardEvent.code`), mouse and gamepad to a `PlayerInput` of abstract values. Press edges are latched until a fixed step consumes them. Blur and pointer-lock loss release everything.
 
+## Menus and settings
+
+- `core/Settings.ts` — the player-facing options, their ranges, `sanitizeSettings()` (repairs anything into valid settings) and `applySettings()` (writes them into `Config`). Settings live in the store and are saved with progress; the save format is at version 2, with a migration from 1.
+- `ui/Menus.ts` — title and pause screen. The prompt or backdrop click starts or resumes (the user gesture for pointer lock and audio); tabs for controls, settings, missions (start, replay, abandon) and credits swallow their own clicks.
+- `ui/Hints.ts` — one contextual control hint at a time for players who have not finished First Flight. `currentHint()` is pure.
+
 ## Debug
 
 - F3: `debug/PerfOverlay.ts`.
-- Backquote: `debug/TuningPanel.ts`, live sliders over `Config.flight/camera/ground/vfx/audio/gamepad`, with Copy JSON and Reset.
-- `debug/testHook.ts`: `window.__SKYBOUND__` (state, input injection, start without pointer lock). Dev or `?debug` only.
+- Backquote: `debug/DebugMenu.ts`. While open, number keys spawn an enemy or the boss, cycle teleports, toggle weather, advance time, toggle god mode, unlock missions, and (9) open `debug/TuningPanel.ts`: live sliders over most `Config` sections with Copy JSON and Reset.
+- `debug/testHook.ts`: `window.__SKYBOUND__` (state, input injection, start without pointer lock, teleport, spawners, time and weather, quality). Dev or `?debug` only.
+- Particle diagnostics include both current survivors and total emissions. Browser assertions use emissions where particle expiry during software rendering would make survivor counts unreliable.
 
 ## Dependency direction
 

@@ -59,8 +59,18 @@ export class PlayerController {
     }
 
     desired.copy(state.velocity).multiplyScalar(dt);
-    this.mover.move(desired, !state.airborne, this.result);
+    this.mover.move(desired, this.result);
     state.position.add(this.result.movement);
+
+    // On foot, rest exactly on whatever is underneath rather than pressing into it.
+    if (!state.airborne) {
+      const offset = this.mover.groundOffset(Config.player.snapToGround);
+      this.result.grounded = offset !== null;
+      if (offset !== null) {
+        this.mover.shiftY(offset);
+        state.position.y += offset;
+      }
+    }
 
     this.respondToHits();
     this.applyContactTransitions(dt);

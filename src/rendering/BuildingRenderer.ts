@@ -13,8 +13,8 @@ import type { BuildingDescriptor } from '../world/Building';
 
 /** Handle for the lighting pass (day/night) to drive lit windows. */
 export interface BuildingMaterialControls {
-  /** 0 = no windows lit, 1 = city at night. */
-  setWindowLight(amount: number): void;
+  /** `amount`: share of windows lit, 0..1. `night`: 0 by day .. 1 at night, lights lamps and signs. */
+  setWindowLight(amount: number, night: number): void;
 }
 
 const DAYTIME_WINDOW_LIGHT = 0.25;
@@ -33,9 +33,11 @@ export function addBuildings(
 ): BuildingMaterialControls {
   const material = new MeshStandardMaterial({ roughness: 0.85 });
   const windowLight = { value: DAYTIME_WINDOW_LIGHT };
+  const night = { value: 0 };
 
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uWindowLight = windowLight;
+    shader.uniforms.uNight = night;
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
@@ -64,6 +66,7 @@ export function addBuildings(
         '#include <common>',
         `#include <common>
         uniform float uWindowLight;
+        uniform float uNight;
         flat varying float vWindows;
         varying vec3 vBoxPosition;
         varying vec3 vBoxNormal;
@@ -77,7 +80,9 @@ export function addBuildings(
         `#include <color_fragment>
         float facadeLit = 0.0;
         vec3 boxNormal = abs(vBoxNormal);
-        if (vWindows > 0.5 && boxNormal.y < 0.5) {
+        // Lamp heads and signs (flag 2) glow in their own colour once it gets dark.
+        vec3 facadeGlow = vWindows > 1.5 ? diffuseColor.rgb * uNight * 1.6 : vec3(0.0);
+        if (vWindows > 0.5 && vWindows < 1.5 && boxNormal.y < 0.5) {
           bool alongZ = boxNormal.x > 0.5;
           float faceWidth = alongZ ? vBoxSize.z : vBoxSize.x;
           float u = (alongZ ? vBoxPosition.z : vBoxPosition.x) * faceWidth;
@@ -115,7 +120,7 @@ export function addBuildings(
       .replace(
         '#include <emissivemap_fragment>',
         `#include <emissivemap_fragment>
-        totalEmissiveRadiance += vec3(1.0, 0.82, 0.52) * facadeLit * (0.35 + uWindowLight);`,
+        totalEmissiveRadiance += vec3(1.0, 0.82, 0.52) * facadeLit * (0.35 + uWindowLight) + facadeGlow;`,
       );
   };
 
@@ -132,18 +137,21 @@ export function addBuildings(
     scale.set(building.hx * 2, building.hy * 2, building.hz * 2);
     mesh.setMatrixAt(index, matrix.compose(position, rotation, scale));
     mesh.setColorAt(index, color.setHex(building.color));
-    windows[index] = building.windows ? 1 : 0;
+    windows[index] = building.glow ? 2 : building.windows ? 1 : 0;
   });
   mesh.geometry.setAttribute('aWindows', new InstancedBufferAttribute(windows, 1));
   mesh.instanceMatrix.needsUpdate = true;
   if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   // The city surrounds the camera, so culling the whole mesh would never help.
   mesh.frustumCulled = false;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
   scene.add(mesh);
 
   return {
-    setWindowLight(amount: number): void {
+    setWindowLight(amount: number, nightAmount: number): void {
       windowLight.value = amount;
+      night.value = nightAmount;
     },
   };
 }

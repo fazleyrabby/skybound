@@ -1,6 +1,7 @@
 import { Config } from '../core/Config';
 import { createRng } from '../utils/rng';
 import { topOf, type BuildingDescriptor } from './Building';
+import { buildCorridor } from './city/corridor';
 import { buildDowntown } from './city/downtown';
 import { buildHarbor } from './city/harbor';
 import { buildHighway } from './city/highway';
@@ -11,11 +12,13 @@ import { buildProps } from './city/props';
 import { buildResidential } from './city/residential';
 import { buildRoads, type Road } from './city/roads';
 import { buildSurround } from './city/surround';
+import { buildTrees, type TreePlacement } from './city/trees';
 
 export interface City {
   buildings: BuildingDescriptor[];
   /** Roads that traffic and pedestrians follow. */
   roads: Road[];
+  trees: TreePlacement[];
   /** Surface point the player starts standing on. */
   spawn: { x: number; y: number; z: number };
   /** Land ends at this x and z on the east and south sides; beyond is ocean. */
@@ -35,15 +38,18 @@ export function generateCity(seed: number = Config.world.seed): City {
   buildResidential(buildings, stream(2));
   buildIndustrial(buildings, stream(3));
   buildHarbor(buildings, stream(4));
-  buildPark(buildings, stream(5));
+  buildPark(buildings);
   buildHighway(buildings);
   buildSurround(buildings, stream(6), Config.world.softRadius);
+  buildCorridor(buildings, stream(7));
   const roads = buildRoads();
   buildProps(buildings, roads);
+  const trees = buildTrees(stream(5), buildings, roads);
 
   return {
     buildings,
     roads,
+    trees,
     spawn: { x: spawnRoof.x, y: topOf(spawnRoof), z: spawnRoof.z },
     shore: Layout.shore,
   };

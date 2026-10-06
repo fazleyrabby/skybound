@@ -21,7 +21,9 @@ export class DamageFlash {
     });
     parent.appendChild(this.element);
     events.on('player:damaged', ({ amount }) => {
-      this.strength = Math.min(1, Math.max(this.strength, 0.35 + amount / 30));
+      // With reduce-flashes on, a faint edge tint still signals the hit.
+      const cap = Config.vfx.flashScale > 0 ? 1 : 0.25;
+      this.strength = Math.min(cap, Math.max(this.strength, 0.35 + amount / 30));
     });
   }
 

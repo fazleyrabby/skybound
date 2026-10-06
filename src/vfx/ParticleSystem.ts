@@ -58,6 +58,7 @@ export class ParticleSystem {
   private readonly spread = new Vector3();
   private cursor = 0;
   private live = 0;
+  private emitted = 0;
 
   constructor(scene: Scene) {
     const capacity = Config.vfx.maxParticles;
@@ -90,16 +91,23 @@ export class ParticleSystem {
     return this.live;
   }
 
-  emit(position: Vector3, velocity: Vector3, options: ParticleOptions): void {
+  /** Total emissions, including expired particles, for timing-independent browser checks. */
+  get emittedCount(): number {
+    return this.emitted;
+  }
+
+  /** `lifeScale` multiplies the life in `options`, so bursts can vary it without copying. */
+  emit(position: Vector3, velocity: Vector3, options: ParticleOptions, lifeScale = 1): void {
     const particle = this.particles[this.cursor];
     this.cursor = (this.cursor + 1) % this.particles.length;
     if (!particle) return;
+    this.emitted++;
     particle.active = true;
     particle.position.copy(position);
     particle.velocity.copy(velocity);
     particle.color.setHex(options.color);
     particle.age = 0;
-    particle.life = options.life;
+    particle.life = options.life * lifeScale;
     particle.size = options.size;
     particle.endSize = options.endSize ?? 1;
     particle.gravity = options.gravity ?? 0;
@@ -125,10 +133,7 @@ export class ParticleSystem {
         .normalize()
         .multiplyScalar(minSpeed + Math.random() * (maxSpeed - minSpeed));
       if (drift) this.spread.add(drift);
-      this.emit(position, this.spread, {
-        ...options,
-        life: options.life * (0.6 + Math.random() * 0.4),
-      });
+      this.emit(position, this.spread, options, 0.6 + Math.random() * 0.4);
     }
   }
 

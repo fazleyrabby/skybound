@@ -8,10 +8,12 @@ export interface CharacterShape {
   height: number;
   skin: number;
   maxSlope: number;
-  snapToGround: number;
 }
 
 const IDENTITY_ROTATION = { x: 0, y: 0, z: 0, w: 1 };
+const DOWN = { x: 0, y: -1, z: 0 };
+/** The ground probe starts this far above the capsule, so it still works after sinking in. */
+const GROUND_PROBE_LIFT = 0.6;
 
 /** The only module that imports Rapier. */
 export class PhysicsWorld {
@@ -50,6 +52,8 @@ export class PhysicsWorld {
       RAPIER.ColliderDesc.capsule(halfCylinder, shape.radius),
       body,
     );
+    const capsule = new RAPIER.Capsule(halfCylinder, shape.radius);
+    const probeOrigin = { x: 0, y: 0, z: 0 };
 
     const controller = this.world.createCharacterController(shape.skin);
     controller.setUp({ x: 0, y: 1, z: 0 });
@@ -63,10 +67,7 @@ export class PhysicsWorld {
     const current = { x: position.x, y: position.y, z: position.z };
 
     return {
-      move: (desired: Vector3, snapToGround: boolean, out: MoveResult): void => {
-        if (snapToGround) controller.enableSnapToGround(shape.snapToGround);
-        else controller.disableSnapToGround();
-
+      move: (desired: Vector3, out: MoveResult): void => {
         controller.computeColliderMovement(collider, desired);
         const moved = controller.computedMovement();
         out.movement.set(moved.x, moved.y, moved.z);
@@ -88,6 +89,34 @@ export class PhysicsWorld {
         current.x += moved.x;
         current.y += moved.y;
         current.z += moved.z;
+        body.setNextKinematicTranslation(current);
+      },
+      // The character controller lets the capsule sink a little into the top of a
+      // narrow box when pressed down each step, so standing is handled here instead:
+      // cast the capsule down from slightly above and report where it should rest.
+      groundOffset: (maxDrop: number): number | null => {
+        probeOrigin.x = current.x;
+        probeOrigin.y = current.y + GROUND_PROBE_LIFT;
+        probeOrigin.z = current.z;
+        const hit = this.world.castShape(
+          probeOrigin,
+          IDENTITY_ROTATION,
+          DOWN,
+          capsule,
+          0,
+          GROUND_PROBE_LIFT + maxDrop,
+          true,
+          undefined,
+          undefined,
+          undefined,
+          body,
+        );
+        if (!hit) return null;
+        // Distance from the capsule's current position to contact, less the gap to keep.
+        return -(hit.time_of_impact - GROUND_PROBE_LIFT - shape.skin);
+      },
+      shiftY: (dy: number): void => {
+        current.y += dy;
         body.setNextKinematicTranslation(current);
       },
       teleport: (target: Vector3): void => {

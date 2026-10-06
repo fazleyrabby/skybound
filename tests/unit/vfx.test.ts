@@ -35,6 +35,7 @@ describe('ParticleSystem', () => {
     expect(particles.count).toBe(1);
     for (let i = 0; i < 40; i++) particles.update(FRAME);
     expect(particles.count).toBe(0);
+    expect(particles.emittedCount).toBe(1);
   });
 
   it('is one draw call and never grows past its pool', () => {

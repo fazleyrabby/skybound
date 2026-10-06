@@ -1,8 +1,8 @@
-import { Vector3, type PerspectiveCamera } from 'three';
+import type { PerspectiveCamera, Vector3 } from 'three';
 import { store } from '../core/store';
 import type { WorldEvents } from '../world/WorldEvents';
+import { ScreenMarker } from './ScreenMarker';
 
-const EDGE = 0.86;
 const REFRESH_INTERVAL = 1 / 10;
 
 /**
@@ -12,9 +12,8 @@ const REFRESH_INTERVAL = 1 / 10;
  */
 export class EventUI {
   private readonly banner: HTMLDivElement;
-  private readonly marker: HTMLDivElement;
+  private readonly marker: ScreenMarker;
   private readonly score: HTMLDivElement;
-  private readonly projected = new Vector3();
   private sinceRefresh = REFRESH_INTERVAL;
 
   constructor(
@@ -35,16 +34,7 @@ export class EventUI {
       textAlign: 'center',
       whiteSpace: 'nowrap',
     });
-    this.marker = element('event-marker', {
-      left: '0',
-      top: '0',
-      padding: '3px 8px',
-      background: 'rgba(255, 120, 40, 0.9)',
-      color: '#10141f',
-      borderRadius: '10px',
-      font: '700 12px/1.3 system-ui, sans-serif',
-      whiteSpace: 'nowrap',
-    });
+    this.marker = new ScreenMarker(parent, 'event-marker', 'rgba(255, 120, 40, 0.9)');
     this.score = element('score', {
       top: '18px',
       right: '24px',
@@ -52,7 +42,7 @@ export class EventUI {
       font: '600 15px/1.3 ui-monospace, Menlo, monospace',
       textShadow: '0 1px 3px rgba(0, 0, 0, 0.7)',
     });
-    parent.append(this.banner, this.marker, this.score);
+    parent.append(this.banner, this.score);
   }
 
   update(frameDelta: number): void {
@@ -93,24 +83,10 @@ export class EventUI {
   private updateMarker(): void {
     const event = this.worldEvents.current;
     if (!event) {
-      this.marker.style.display = 'none';
+      this.marker.hide();
       return;
     }
     const site = event.site;
-    this.projected.set(site.x, site.y, site.z).project(this.camera);
-    let { x, y } = this.projected;
-    // Behind the camera the projection mirrors; flip it and push it to the edge.
-    const behind = this.projected.z > 1;
-    if (behind) {
-      x = -x;
-      y = -y;
-    }
-    const overflow = Math.max(Math.abs(x), Math.abs(y));
-    if (behind || overflow > EDGE) {
-      const scale = EDGE / Math.max(overflow, 1e-3);
-      x *= scale;
-      y *= scale;
-    }
     const distance = Math.round(
       Math.hypot(
         site.x - this.playerPosition.x,
@@ -118,12 +94,7 @@ export class EventUI {
         site.z - this.playerPosition.z,
       ),
     );
-    const marker = this.marker;
-    marker.style.display = 'block';
-    marker.textContent = `◆ ${distance} m`;
-    const px = (x * 0.5 + 0.5) * window.innerWidth;
-    const py = (-y * 0.5 + 0.5) * window.innerHeight;
-    marker.style.transform = `translate(${px}px, ${py}px) translate(-50%, -50%)`;
+    this.marker.show(this.camera, site.x, site.y, site.z, `◆ ${distance} m`);
   }
 }
 

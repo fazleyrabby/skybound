@@ -36,6 +36,25 @@ export function buildHarbor(out: BuildingDescriptor[], rng: Rng): void {
     boxes.add(400, z, rng.range(70, 110), 40, rng.range(10, 16), shade(Palette.industrial, rng));
   }
 
+  // A second container yard on the east docks, around the warehouses.
+  for (let x = outerStart + 14; x < coreHalf - 8; x += 20) {
+    for (let z = 108; z < outerStart - 6; z += 9) {
+      if (Math.abs(x - 400) < 62 && ((z - 130 + 600) % 60 < 22 || (z - 130 + 600) % 60 > 38))
+        continue;
+      if (rng.next() < 0.35) continue;
+      const stack = 1 + Math.floor(rng.next() * 3);
+      const color = Palette.containers[Math.floor(rng.next() * Palette.containers.length)];
+      boxes.add(
+        x,
+        z,
+        CONTAINER.length,
+        CONTAINER.width * 2,
+        CONTAINER.height * stack,
+        shade(color ?? Palette.containers[0], rng, 0.08),
+      );
+    }
+  }
+
   // Piers reaching into the water, with a ship alongside two of them.
   const pierLength = 140;
   [90, 230, 370].forEach((x, index) => {

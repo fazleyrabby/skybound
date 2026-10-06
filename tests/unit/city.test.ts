@@ -33,7 +33,7 @@ describe('city generation', () => {
 
   it('stays within budget for one instanced draw call', () => {
     expect(city.buildings.length).toBeGreaterThan(600);
-    expect(city.buildings.length).toBeLessThan(3000);
+    expect(city.buildings.length).toBeLessThan(6000);
   });
 
   it('downtown is tall and stays inside its block', () => {
@@ -183,5 +183,109 @@ describe('building design', () => {
     expect(plant.some((b) => Math.abs(b.x - x) < 18 && Math.abs(b.z - z) < 18 && b.y > y)).toBe(
       false,
     );
+  });
+});
+
+describe('trees', () => {
+  it('are placed deterministically, in the park, along the avenue and in yards', () => {
+    expect(generateCity(1337).trees).toEqual(city.trees);
+    expect(city.trees.length).toBeGreaterThan(200);
+    expect(city.trees.length).toBeLessThan(450);
+    const inPark = city.trees.filter((t) => t.x < 0 && t.z > 200);
+    const onAvenue = city.trees.filter((t) => Math.abs(t.x) < 25 && Math.abs(t.z) < 240);
+    const inYards = city.trees.filter((t) => t.z < 195 && (t.x < -300 || t.z < -300));
+    expect(inPark.length).toBeGreaterThan(120);
+    expect(onAvenue.length).toBeGreaterThan(20);
+    expect(inYards.length).toBeGreaterThan(40);
+    expect(city.trees.some((t) => t.kind === 'conifer')).toBe(true);
+  });
+
+  it('never stand inside a building, on a street, in the arch or in the sea', () => {
+    for (const tree of city.trees) {
+      const inside = solid.find(
+        (b) => b.y - b.hy < 4 && Math.abs(tree.x - b.x) < b.hx && Math.abs(tree.z - b.z) < b.hz,
+      );
+      expect(inside).toBeUndefined();
+      expect(tree.x).toBeLessThan(Layout.shore);
+      expect(tree.z).toBeLessThan(Layout.shore);
+      const onStreet = city.roads.some(
+        (road) =>
+          road.street &&
+          tree.x > Math.min(road.ax, road.bx) - road.width / 2 &&
+          tree.x < Math.max(road.ax, road.bx) + road.width / 2 &&
+          tree.z > Math.min(road.az, road.bz) - road.width / 2 &&
+          tree.z < Math.max(road.az, road.bz) + road.width / 2,
+      );
+      expect(onStreet).toBe(false);
+      expect(Math.abs(tree.x + 400) < 30 && Math.abs(tree.z - 350) < 40).toBe(false);
+    }
+  });
+
+  it('have sensible sizes', () => {
+    for (const tree of city.trees) {
+      expect(tree.height).toBeGreaterThanOrEqual(6);
+      expect(tree.height).toBeLessThanOrEqual(19);
+      expect(tree.spread).toBeGreaterThan(0.25);
+      expect(tree.spread).toBeLessThan(0.85);
+    }
+  });
+});
+
+describe('filling the ground', () => {
+  /** Share of a square area covered by building footprints, sampled on a grid. */
+  function coverage(minX: number, maxX: number, minZ: number, maxZ: number): number {
+    const footprints = city.buildings.filter((b) => b.hy > 1.5);
+    let covered = 0;
+    let total = 0;
+    for (let x = minX; x <= maxX; x += 8) {
+      for (let z = minZ; z <= maxZ; z += 8) {
+        total++;
+        if (footprints.some((b) => Math.abs(x - b.x) <= b.hx && Math.abs(z - b.z) <= b.hz))
+          covered++;
+      }
+    }
+    return covered / total;
+  }
+
+  it('midtown lines the highway ring with low blocks', () => {
+    const midtown = inDistrict('midtown').filter((b) => b.solid);
+    expect(midtown.length).toBeGreaterThan(80);
+    for (const block of midtown) expect(topOf(block)).toBeLessThan(58); // corridor above stays open
+    expect(coverage(-190, 190, -292, -208)).toBeGreaterThan(0.25);
+    expect(coverage(208, 292, -190, 190)).toBeGreaterThan(0.25);
+  });
+
+  it('leaves the First Flight course clear at street level south of downtown', () => {
+    const inTheWay = solid.filter(
+      (b) =>
+        b.z - b.hz < 296 &&
+        b.z + b.hz > 262 &&
+        b.x + b.hx > -200 &&
+        b.x - b.hx < 40 &&
+        b.y - b.hy < 20,
+    );
+    expect(inTheWay.filter((b) => b.district !== 'highway')).toEqual([]);
+  });
+
+  it('residential, industrial and the east docks are built up', () => {
+    expect(coverage(-490, -310, -490, 190)).toBeGreaterThan(0.22); // west residential
+    expect(coverage(-290, 290, -490, -310)).toBeGreaterThan(0.22); // north residential
+    expect(coverage(310, 490, -490, 90)).toBeGreaterThan(0.3); // industrial
+    expect(coverage(310, 490, 110, 290)).toBeGreaterThan(0.2); // east docks
+  });
+
+  it('suburbs run right up to the city and thin out with distance', () => {
+    const near = coverage(-800, -540, -400, 400);
+    const far = coverage(-1450, -1200, -400, 400);
+    expect(near).toBeGreaterThan(0.2);
+    expect(far).toBeLessThan(near * 0.7);
+    expect(far).toBeGreaterThan(0.02);
+    // No bare ring between the core and the suburbs any more.
+    expect(coverage(-640, -510, -300, 300)).toBeGreaterThan(0.18);
+  });
+
+  it('open land beyond is broken up by fields', () => {
+    const fields = inDistrict('surround').filter((b) => !b.solid);
+    expect(fields.length).toBeGreaterThan(30);
   });
 });

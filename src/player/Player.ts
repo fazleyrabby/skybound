@@ -11,6 +11,8 @@ import { damagePlayer, restoreVitals, updateVitals } from './PlayerVitals';
 /** The player as gameplay sees it: state plus the controller that advances it. */
 export class Player {
   readonly state = new PlayerState();
+  /** Debug god mode: ignore all damage. */
+  invulnerable = false;
   private readonly controller: PlayerController;
   private readonly scratch = new Vector3();
 
@@ -50,6 +52,7 @@ export class Player {
    * reappears hovering above the spawn roof with full health (spec section 67).
    */
   damage(amount: number): void {
+    if (this.invulnerable) return;
     if (!damagePlayer(this.state, amount, this.events)) return;
     this.scratch.copy(this.spawn);
     this.scratch.y += Config.vitals.respawnHeight;

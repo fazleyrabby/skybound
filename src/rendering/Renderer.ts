@@ -1,4 +1,4 @@
-import { Color, Fog, PerspectiveCamera, Scene, WebGLRenderer } from 'three';
+import { Color, PerspectiveCamera, Scene, WebGLRenderer } from 'three';
 import { Config } from '../core/Config';
 
 export interface RenderStats {
@@ -19,12 +19,13 @@ export class Renderer {
 
   private readonly webgl: WebGLRenderer;
   private readonly resizeObserver: ResizeObserver;
+  private pixelRatio = Math.min(window.devicePixelRatio, Config.render.maxPixelRatio);
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
     onContextLost: () => void,
   ) {
-    const { fov, near, far, clearColor, fogNear, fogFar } = Config.render;
+    const { fov, near, far, clearColor } = Config.render;
 
     // A 0.1 m near plane with a 12 km far plane leaves a standard depth buffer too coarse
     // to separate ground layers at distance (they flicker). Logarithmic depth fixes that.
@@ -34,8 +35,8 @@ export class Renderer {
       powerPreference: 'high-performance',
       logarithmicDepthBuffer: true,
     });
+    // Sky and fog are owned by Atmosphere; this colour only shows before it is created.
     this.scene.background = new Color(clearColor);
-    this.scene.fog = new Fog(clearColor, fogNear, fogFar);
     this.camera = new PerspectiveCamera(fov, 1, near, far);
     // In the scene graph so camera-attached effects (speed lines) render.
     this.scene.add(this.camera);
@@ -48,6 +49,22 @@ export class Renderer {
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(canvas);
     this.resize();
+  }
+
+  /**
+   * Sets the render resolution as a pixel ratio. Dynamic resolution calls this;
+   * it is never allowed above what the display can show.
+   */
+  setPixelRatio(ratio: number): void {
+    const clamped = Math.min(ratio, window.devicePixelRatio);
+    if (Math.abs(clamped - this.pixelRatio) < 0.001) return;
+    this.pixelRatio = clamped;
+    this.resize();
+  }
+
+  /** The underlying renderer, for other rendering modules (shadows, post effects). */
+  get backend(): WebGLRenderer {
+    return this.webgl;
   }
 
   static isSupported(): boolean {
@@ -77,7 +94,7 @@ export class Renderer {
   private resize(): void {
     const width = Math.max(1, this.canvas.clientWidth);
     const height = Math.max(1, this.canvas.clientHeight);
-    this.webgl.setPixelRatio(Math.min(window.devicePixelRatio, Config.render.maxPixelRatio));
+    this.webgl.setPixelRatio(this.pixelRatio);
     this.webgl.setSize(width, height, false);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();

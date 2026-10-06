@@ -15,6 +15,10 @@ export interface PerfSample {
   chunks: string;
   vehicles: number;
   pedestrians: number;
+  /** Time of day and weather, e.g. "14:30  rain". */
+  clock: string;
+  /** Quality preset, e.g. "MEDIUM (auto)". */
+  quality: string;
   /** Live enemies and missiles. */
   entities: number;
   /** Player speed in m/s. */
@@ -69,8 +73,8 @@ export class PerfOverlay {
         `FPS: ${(1000 / avgMs).toFixed(0)}   Frame: ${avgMs.toFixed(1)} ms (max ${(this.worstFrame * 1000).toFixed(1)})   Sim: ${s.simMs.toFixed(2)} ms`,
         `Draw Calls: ${s.drawCalls}   Triangles: ${formatCount(s.triangles)}`,
         `Geometries: ${s.geometries}   Textures: ${s.textures}`,
-        `Entities: ${s.entities}   Bodies: ${s.bodies}   Particles: ${s.particles}   DPR: ${s.pixelRatio.toFixed(2)}`,
-        `Chunks: ${s.chunks}   Vehicles: ${s.vehicles}   Pedestrians: ${s.pedestrians}`,
+        `Entities: ${s.entities}   Bodies: ${s.bodies}   Particles: ${s.particles}   DPR: ${s.pixelRatio.toFixed(2)}   ${s.quality}`,
+        `Chunks: ${s.chunks}   Vehicles: ${s.vehicles}   Pedestrians: ${s.pedestrians}   ${s.clock}`,
         `Speed: ${s.speed.toFixed(0)} m/s (${toDisplaySpeed(s.speed).toFixed(0)} km/h)   State: ${s.flightState}`,
       ].join('\n');
     }

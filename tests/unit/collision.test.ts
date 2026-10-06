@@ -8,7 +8,7 @@ import { Player } from '../../src/player/Player';
 import { createPlayerInput, type PlayerInput } from '../../src/player/PlayerState';
 import { STEP } from './helpers';
 
-const { height, radius, skin, maxSlope, snapToGround } = Config.player;
+const { height, radius, skin, maxSlope } = Config.player;
 const FLOOR_Y = height / 2 + skin;
 const WALL_Z = -60;
 const WALL_HALF_THICKNESS = 0.25;
@@ -18,10 +18,7 @@ async function createScene(start: Vector3) {
   const physics = await PhysicsWorld.create(STEP, Config.sim.gravity);
   physics.addStaticCuboid(0, -0.5, 0, 2000, 0.5, 2000);
   physics.addStaticCuboid(0, 50, WALL_Z, 200, 50, WALL_HALF_THICKNESS);
-  const mover = physics.createCharacterMover(
-    { height, radius, skin, maxSlope, snapToGround },
-    start,
-  );
+  const mover = physics.createCharacterMover({ height, radius, skin, maxSlope }, start);
   const events = new EventBus<GameEvents>();
   const impacts: GameEvents['player:impact'][] = [];
   events.on('player:impact', (impact) => impacts.push(impact));
@@ -118,5 +115,83 @@ describe('teleport', () => {
     run(2, { descend: true });
     expect(player.state.flying).toBe(true);
     expect(player.state.position.y).toBeGreaterThan(200);
+  });
+});
+
+describe('standing on rooftops', () => {
+  const REST = height / 2 + skin;
+
+  /** A world with the ground and one box whose top is at `top`. */
+  async function onBox(top: number, halfHeight: number, halfWidth: number) {
+    const physics = await PhysicsWorld.create(STEP, Config.sim.gravity);
+    physics.addStaticCuboid(0, -0.5, 0, 6000, 0.5, 6000);
+    physics.addStaticCuboid(0, top - halfHeight, 0, halfWidth, halfHeight, halfWidth);
+    const spawn = new Vector3(0, top + REST, 0);
+    const mover = physics.createCharacterMover({ height, radius, skin, maxSlope }, spawn);
+    const player = new Player(mover, spawn, new EventBus<GameEvents>());
+    physics.step();
+    const run = (seconds: number, overrides: Partial<PlayerInput> = {}): void => {
+      const input = { ...createPlayerInput(), ...overrides };
+      for (let i = 0; i < Math.round(seconds / STEP); i++) {
+        player.fixedUpdate(input, STEP);
+        physics.step();
+        input.jumpPressed = false;
+      }
+    };
+    return { player, run };
+  }
+
+  it('does not sink into a roof, whatever the size of the building', async () => {
+    // The spawn tower is 36 m wide and 240 m tall; the character controller alone sank into it.
+    for (const [top, halfHeight, halfWidth] of [
+      [240, 120, 18],
+      [240, 5, 18],
+      [60, 30, 6],
+      [10, 5, 2],
+      [240, 120, 500],
+    ] as const) {
+      const { player, run } = await onBox(top, halfHeight, halfWidth);
+      run(3);
+      expect(player.state.state).toBe('GROUND');
+      expect(player.state.position.y - top).toBeCloseTo(REST, 2);
+    }
+  });
+
+  it('stays at the same height while walking across the roof, then falls off the edge', async () => {
+    const { player, run } = await onBox(240, 120, 18);
+    run(1.5, { moveZ: 1 });
+    expect(player.state.state).toBe('GROUND');
+    expect(player.state.position.y - 240).toBeCloseTo(REST, 2);
+    run(4, { moveZ: 1 });
+    expect(player.state.position.z).toBeLessThan(-18);
+    expect(player.state.state).toBe('JUMPING');
+    expect(player.state.position.y).toBeLessThan(230);
+  });
+
+  it('a jump leaves the roof and comes back to rest at the same height', async () => {
+    const { player, run } = await onBox(240, 120, 18);
+    run(0.2, { jumpPressed: true });
+    expect(player.state.position.y - 240).toBeGreaterThan(REST + 0.5);
+    run(2);
+    expect(player.state.state).toBe('GROUND');
+    expect(player.state.position.y - 240).toBeCloseTo(REST, 2);
+  });
+
+  it('landing from flight rests on the roof, not in it', async () => {
+    const { player, run } = await onBox(240, 120, 18);
+    run(0.1, { jumpPressed: true });
+    run(0.3, { jumpPressed: true });
+    run(1, { ascend: true });
+    run(4, { descend: true });
+    expect(player.state.state).toBe('GROUND');
+    expect(player.state.position.y - 240).toBeCloseTo(REST, 2);
+  });
+
+  it('recovers if it somehow starts sunk into the surface', async () => {
+    const { player, run } = await onBox(240, 120, 18);
+    player.teleport(0, 240 + REST - 0.4, 0);
+    player.state.state = 'GROUND';
+    run(0.2);
+    expect(player.state.position.y - 240).toBeCloseTo(REST, 2);
   });
 });

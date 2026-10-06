@@ -43,7 +43,7 @@ export function buildProps(out: BuildingDescriptor[], roads: readonly Road[]): v
       const x = road.ax + (road.bx - road.ax) * t + (alongX ? 0 : side * edge);
       const z = road.az + (road.bz - road.az) * t + (alongX ? side * edge : 0);
       boxes.add(x, z, 0.3, 0.3, LAMP_HEIGHT, LAMP_POST, decor);
-      boxes.add(x, z, 1.2, 1.2, 0.35, LAMP_HEAD, { solid: false, baseY: LAMP_HEIGHT });
+      boxes.add(x, z, 1.2, 1.2, 0.35, LAMP_HEAD, { solid: false, baseY: LAMP_HEIGHT, glow: true });
     }
   }
 }

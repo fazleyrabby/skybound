@@ -82,6 +82,8 @@ export class InputManager {
     out.blast = this.isHeld('blast');
     out.dashPressed = this.wasPressed('dash');
     out.lockPressed = this.wasPressed('lockOn');
+    out.interactPressed = this.wasPressed('interact');
+    out.abandonPressed = this.wasPressed('abandon');
   }
 
   /** Sets an action directly. Used by gamepad/touch later and by tests now. */

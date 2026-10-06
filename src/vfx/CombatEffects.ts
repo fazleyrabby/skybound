@@ -83,6 +83,31 @@ export class CombatEffects {
       rings.trigger(at, 22, 0.5, COLOR.fire);
     });
 
+    // A phase breaking: armour plates and fire thrown wide.
+    events.on('boss:phase', ({ x, y, z }) => {
+      at.set(x, y, z);
+      particles.burst(at, 40, 15, 70, { color: COLOR.debris, life: 2.2, size: 1.8, gravity: 1 });
+      particles.burst(at, 40, 10, 55, { color: COLOR.fire, life: 1, size: 1.6, drag: 1.8 });
+      this.flash(COLOR.ember, 26, 0.2);
+      rings.trigger(at, 70, 0.7, COLOR.fire);
+    });
+
+    events.on('boss:defeated', ({ x, y, z }) => {
+      at.set(x, y, z);
+      particles.burst(at, 90, 15, 110, { color: COLOR.fire, life: 1.6, size: 2.6, drag: 1.4 });
+      particles.burst(at, 60, 20, 130, { color: COLOR.ember, life: 1.2, size: 1.2, drag: 1 });
+      particles.burst(at, 60, 15, 80, { color: COLOR.debris, life: 3, size: 2, gravity: 1 });
+      particles.burst(at, 30, 2, 14, {
+        color: COLOR.smoke,
+        life: 3.5,
+        size: 5,
+        endSize: 3,
+        drag: 0.8,
+      });
+      this.flash(COLOR.ember, 55, 0.3);
+      rings.trigger(at, 160, 1.1, COLOR.fire);
+    });
+
     events.on('enemy:fired', ({ kind, x, y, z }) => {
       at.set(x, y, z);
       particles.emit(at, ZERO, {
@@ -124,6 +149,7 @@ export class CombatEffects {
 
   /** One large, very short-lived particle at the last `at` position. */
   private flash(color: number, size: number, life: number): void {
+    if (Config.vfx.flashScale <= 0) return;
     this.particles.emit(at, ZERO, { color, life, size, endSize: 1.8 });
   }
 }

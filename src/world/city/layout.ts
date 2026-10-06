@@ -32,7 +32,14 @@ export const Palette = {
   /** Facade colours for towers: steel, blue glass, warm stone, graphite, teal, sand. */
   towers: [0x8f9bb0, 0x6f8fb5, 0xa39a8c, 0x566174, 0x7fa3a0, 0xc2b59b],
   podium: 0x6d7078,
+  plaza: 0x8a8f96,
+  sideStreet: 0x4a4d54,
+  /** Open land outside the city: grass, crops, scrub, bare earth. */
+  fields: [0x5f7f4a, 0x7c8a4f, 0x6b7a55, 0x8a7d5a, 0x55704a],
+  tank: 0xb8bcc2,
   roofUnit: 0x55595f,
+  /** Billboard and rooftop sign colours. */
+  signs: [0xff3d6e, 0x29d3ff, 0xffc22e, 0x7dff6a, 0xb86bff],
   antenna: 0xd8dde6,
   downtown: 0x8f9bb0,
   landmark: 0xc9d4e6,

@@ -15,6 +15,8 @@ const BUTTON_BINDINGS: ReadonlyArray<readonly [index: number, action: Action]> =
   [10, 'boost'], // L3
   [5, 'dash'], // RB
   [11, 'lockOn'], // R3
+  [12, 'interact'], // D-pad up
+  [8, 'abandon'], // Back / View
 ];
 
 /** Zero inside the dead zone, rescaled to reach 1 at full deflection. */
@@ -31,7 +33,8 @@ export class GamepadInput {
   moveZ = 0;
   lookX = 0;
   lookY = 0;
-  readonly held = new Set<Action>();
+  held = new Set<Action>();
+  private previousHeld = new Set<Action>();
   /** Press edges, latched until the next fixed step consumes them. */
   readonly pressed = new Set<Action>();
 
@@ -60,7 +63,10 @@ export class GamepadInput {
     this.lookX = curve(axis(AXIS.RIGHT_X));
     this.lookY = curve(axis(AXIS.RIGHT_Y));
 
-    const wasHeld = new Set(this.held);
+    // Swap rather than copy: no allocation per frame.
+    const wasHeld = this.held;
+    this.held = this.previousHeld;
+    this.previousHeld = wasHeld;
     this.held.clear();
     for (const [index, action] of BUTTON_BINDINGS) if (down(index)) this.held.add(action);
     for (const action of this.held) if (!wasHeld.has(action)) this.pressed.add(action);
