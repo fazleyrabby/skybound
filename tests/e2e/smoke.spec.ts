@@ -43,7 +43,7 @@ test('boots, renders and advances the simulation without errors', async ({ page 
   // The hero model loaded and every joint was found.
   expect(await page.evaluate(() => window.__SKYBOUND__!.hero)).toMatchObject({
     model: true,
-    joints: 14,
+    joints: 17,
   });
   expect(state.errors).toBe(0);
   expect(state.bodies).toBeGreaterThan(500); // ground + city + player
@@ -122,7 +122,7 @@ test('hero animation: reverse strafing stays upright and damage returns to movem
 });
 
 test('scripted flight: jump, take off, fly, boost, brake, land', async ({ page }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(240_000);
   await bootAndStart(page);
 
   const hold = (action: string, held: boolean) =>
@@ -184,8 +184,9 @@ test('scripted flight: jump, take off, fly, boost, brake, land', async ({ page }
 
   const hovering = await player();
   await hold('descend', true);
+  // The descent runs on game time, which software rendering stretches several times over.
   await page.waitForFunction(() => window.__SKYBOUND__!.player.state === 'GROUND', undefined, {
-    timeout: 60_000,
+    timeout: 150_000,
   });
   await hold('descend', false);
 
@@ -232,6 +233,7 @@ test('debug menu opens with Backquote; 9 opens the tuning panel and sliders edit
 });
 
 test('combat: blast and punch a training dummy', async ({ page }) => {
+  test.setTimeout(120_000);
   await bootAndStart(page);
   const hold = (action: string, held: boolean) =>
     page.evaluate(
@@ -271,7 +273,8 @@ test('combat: blast and punch a training dummy', async ({ page }) => {
   expect(await page.evaluate(() => window.__SKYBOUND__!.emittedParticles)).toBeGreaterThan(
     emissionsBefore + 20,
   );
-  await expect.poll(async () => (await dummy()).alive, { timeout: 10_000 }).toBe(true);
+  // Respawn runs on game time, which software rendering stretches.
+  await expect.poll(async () => (await dummy()).alive, { timeout: 45_000 }).toBe(true);
 
   // Lock-on pins the target.
   const respawned = await dummy();
@@ -399,7 +402,7 @@ test('world event: a drone attack is announced, marked, and pays out when cleare
 test('missions: beacon prompt, First Flight objectives, reward, and progress saved across reloads', async ({
   page,
 }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(240_000);
   await bootAndStart(page);
   const mission = () => page.evaluate(() => window.__SKYBOUND__!.mission);
   const hold = (action: string, held: boolean) =>
@@ -634,15 +637,19 @@ test('quality: presets change resolution, shadows and density; the simulation st
   expect((await quality()).auto).toBe(true);
   expect(['MOBILE', 'LOW', 'MEDIUM', 'HIGH']).toContain((await quality()).preset);
 
-  // CPU budget for the simulation is 4 ms per frame (spec section 38).
+  // CPU budget for the simulation is 4 ms per frame (spec section 38). At 60 FPS a frame
+  // runs one fixed step; software rendering here runs several to catch up, so judge the
+  // cost of a step, and hold it well inside the budget.
   await page.evaluate(() => window.__SKYBOUND__!.triggerEvent(0));
   const samples: number[] = [];
   for (let i = 0; i < 20; i++) {
-    samples.push(await page.evaluate(() => window.__SKYBOUND__!.simMs));
+    const step = await page.evaluate(() => window.__SKYBOUND__!.simStepMs);
+    if (step > 0) samples.push(step);
     await page.waitForTimeout(50);
   }
   samples.sort((a, b) => a - b);
-  expect(samples[Math.floor(samples.length / 2)]).toBeLessThan(4);
+  expect(samples.length).toBeGreaterThan(5);
+  expect(samples[Math.floor(samples.length / 2)]).toBeLessThan(1.5);
   expect(await page.evaluate(() => window.__SKYBOUND__!.errorCount)).toBe(0);
 });
 

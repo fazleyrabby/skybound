@@ -12,7 +12,25 @@ Things built and covered by automated tests, but never judged by a person. This 
 - **Performance:** no real-GPU profile. One reading of 60 FPS at the title screen in the in-app browser; nothing during play.
 - **Input:** pointer lock and Esc pause, real mouse buttons, a real gamepad.
 - **Browsers:** Chromium only. Safari and Firefox untested.
-- **Visuals in motion:** day/night transitions, rain building, shadows while flying fast, particle effects, most hero poses.
+- **Visuals in motion:** day/night transitions, rain building, shadows while flying fast, particle effects, most hero poses, the walk and run cycle, the cape, the heat beam.
+- **Balance:** heat beam damage and overheat time against drones and Titan.
+
+## 2026-10-11 — Hero, city and beam pass (director feedback)
+
+The director asked for a caped hero in the classic mould, then called three versions robotic, toy-like and "like lego"; asked for a more detailed and realistic city everywhere, not only downtown; reported flicker downtown and the ground shaking on foot; and asked for a continuous beam in place of the bolts.
+
+- **The hero is original.** Own emblem (a lit diamond with two swept bars) and colours; not anyone's shield, eagle or flag.
+- **One fused skin, generated.** Separate overlapping parts read as a jointed toy however well they were shaped. The body parts are now welded by a voxel remesh into one surface and skinned to a real armature. Weights are computed from position along each limb, so there is still no hand weight painting and the model stays reproducible from two scripts.
+- **Realistic proportions over the stylised reference.** About eight heads tall, small eyes, muscle shape under the suit, hands with fingers. It is still a procedural model without textures: the face will not pass for a sculpt at close range. A sculpted or scanned head would be the next step up and needs an artist or a licensed base mesh.
+- **Walking is generated, not posed.** Two blended extremes could not give knee timing, hip and shoulder counter-rotation. `gait.ts` is a pure function of phase and pace. Feet still slide slightly: stride length is not locked to ground speed.
+- **The ground shake was physics, not animation.** The ground was a box 12 km wide, and Rapier's shape cast against it was off by up to 20 cm while moving, so the capsule (and the camera with it) bounced. The ground is now a half-space. Rapier's controller invents a correction when asked to move by zero against a plane, so zero-length moves are skipped.
+- **The downtown flicker was shader aliasing, not z-fighting.** Hard-edged windows crawled with every camera movement. All facade, road and paving patterns are now antialiased and fade by pixel footprint. Overlapping field patches of different colours in the outskirts did z-fight; they no longer overlap.
+- **The city carries on past the core.** The surrounding grid is built up with the same towers as downtown for most of its reach, on its own streets. Box count roughly tripled to about 7,600; still one draw call. About 1.0–1.1 M triangles in view on HIGH, most of them trees.
+- **Pavements are solid and kerb-high**, with step-up enabled on the controller, rather than decoration the hero's feet sink into.
+- **Vehicles and pedestrians are modelled** from primitives in code. One car body style and one build of person; variety is colour only.
+- **Heat beam replaces energy bolts.** Held, hitscan, damage in ticks, overheats after `beamOverheatTime` and must cool to `beamResumeHeat`. `combat/Projectiles.ts` is gone; enemy bullets and missiles are unaffected. The beam leaves no scorch marks.
+- **Not done:** drone and Titan are still grayboxes. Parked cars, harbour cranes beyond the existing one, and scorch decals were considered and left out.
+- **Unverified by a person:** how the walk and run look in motion, cape behaviour at boost speed, beam balance (85 damage per second), frame rate with the denser city on a real GPU.
 
 ## 2026-10-06 — Hero movement presentation (director request)
 

@@ -8,7 +8,7 @@ import { Player } from '../../src/player/Player';
 import { createPlayerInput, type PlayerInput } from '../../src/player/PlayerState';
 import { STEP } from './helpers';
 
-const { height, radius, skin, maxSlope } = Config.player;
+const { height, radius, skin, maxSlope, stepHeight } = Config.player;
 const FLOOR_Y = height / 2 + skin;
 const WALL_Z = -60;
 const WALL_HALF_THICKNESS = 0.25;
@@ -18,7 +18,7 @@ async function createScene(start: Vector3) {
   const physics = await PhysicsWorld.create(STEP, Config.sim.gravity);
   physics.addStaticCuboid(0, -0.5, 0, 2000, 0.5, 2000);
   physics.addStaticCuboid(0, 50, WALL_Z, 200, 50, WALL_HALF_THICKNESS);
-  const mover = physics.createCharacterMover({ height, radius, skin, maxSlope }, start);
+  const mover = physics.createCharacterMover({ height, radius, skin, maxSlope, stepHeight }, start);
   const events = new EventBus<GameEvents>();
   const impacts: GameEvents['player:impact'][] = [];
   events.on('player:impact', (impact) => impacts.push(impact));
@@ -127,7 +127,10 @@ describe('standing on rooftops', () => {
     physics.addStaticCuboid(0, -0.5, 0, 6000, 0.5, 6000);
     physics.addStaticCuboid(0, top - halfHeight, 0, halfWidth, halfHeight, halfWidth);
     const spawn = new Vector3(0, top + REST, 0);
-    const mover = physics.createCharacterMover({ height, radius, skin, maxSlope }, spawn);
+    const mover = physics.createCharacterMover(
+      { height, radius, skin, maxSlope, stepHeight },
+      spawn,
+    );
     const player = new Player(mover, spawn, new EventBus<GameEvents>());
     physics.step();
     const run = (seconds: number, overrides: Partial<PlayerInput> = {}): void => {
@@ -193,5 +196,116 @@ describe('standing on rooftops', () => {
     player.state.state = 'GROUND';
     run(0.2);
     expect(player.state.position.y - 240).toBeCloseTo(REST, 2);
+  });
+});
+
+describe('walking on open ground', () => {
+  const REST = height / 2 + skin;
+
+  async function onGround(build: (physics: PhysicsWorld) => void, x: number, z: number) {
+    const physics = await PhysicsWorld.create(STEP, Config.sim.gravity);
+    build(physics);
+    const spawn = new Vector3(x, REST, z);
+    const mover = physics.createCharacterMover(
+      { height, radius, skin, maxSlope, stepHeight },
+      spawn,
+    );
+    const player = new Player(mover, spawn, new EventBus<GameEvents>());
+    physics.step();
+    return { physics, player };
+  }
+
+  it('keeps a steady height anywhere in the world, walking and sprinting', async () => {
+    for (const [x, z] of [
+      [0, 30],
+      [-400, 300],
+      [1800, -2600],
+    ] as const) {
+      const { physics, player } = await onGround((world) => world.addGround(0), x, z);
+      const input = { ...createPlayerInput(), moveZ: 1, moveX: 0.4 };
+      let low = Infinity;
+      let high = -Infinity;
+      for (let i = 0; i < 600; i++) {
+        input.boost = i > 300;
+        player.fixedUpdate(input, STEP);
+        physics.step();
+        low = Math.min(low, player.state.position.y);
+        high = Math.max(high, player.state.position.y);
+        expect(player.state.state).toBe('GROUND');
+      }
+      expect(low, `low at ${x},${z}`).toBeGreaterThan(REST - 0.005);
+      expect(high, `high at ${x},${z}`).toBeLessThan(REST + 0.005);
+      expect(Math.hypot(player.state.position.x - x, player.state.position.z - z)).toBeGreaterThan(
+        40,
+      );
+    }
+  });
+
+  it('the ground has no edge to fall off and nothing passes through it', async () => {
+    const { physics, player } = await onGround((world) => world.addGround(0), 1500, -1500);
+    for (let i = 0; i < 120; i++) {
+      player.fixedUpdate(createPlayerInput(), STEP);
+      physics.step();
+    }
+    expect(player.state.position.y).toBeCloseTo(REST, 2);
+    expect(physics.castSphere(new Vector3(0, 50, 0), new Vector3(0, -1, 0), 200, 0.5)).toBeCloseTo(
+      49.5,
+      1,
+    );
+  });
+
+  it('steps up onto a kerb and back down, but is stopped by a wall', async () => {
+    const build = (world: PhysicsWorld): void => {
+      world.addGround(0);
+      world.addStaticCuboid(0, 0.05, -8, 20, 0.05, 2); // pavement, 10 cm high, 4 m deep
+      world.addStaticCuboid(0, 0.5, -30, 20, 0.5, 1); // a metre-high wall
+    };
+    const { physics, player } = await onGround(build, 0, 0);
+    const input = { ...createPlayerInput(), moveZ: 1 };
+    let onKerb = 0;
+    let highest = 0;
+    for (let i = 0; i < 600; i++) {
+      player.fixedUpdate(input, STEP);
+      physics.step();
+      const { y, z } = player.state.position;
+      if (z < -6.5 && z > -9.5) {
+        onKerb++;
+        expect(y).toBeCloseTo(REST + 0.1, 2);
+      }
+      highest = Math.max(highest, y);
+    }
+    expect(onKerb).toBeGreaterThan(10);
+    expect(highest).toBeLessThan(REST + 0.13);
+    // Past the kerb, back on the ground, and held by the wall.
+    expect(player.state.position.z).toBeLessThan(-12);
+    expect(player.state.position.z).toBeGreaterThan(-29.5);
+    expect(player.state.position.y).toBeCloseTo(REST, 2);
+  });
+
+  it('a hero who flies down onto open ground lands and can walk away', async () => {
+    const { physics, player } = await onGround((world) => world.addGround(0), 40, 40);
+    const run = (seconds: number, overrides: Partial<PlayerInput> = {}): void => {
+      const input = { ...createPlayerInput(), ...overrides };
+      for (let i = 0; i < Math.round(seconds / STEP); i++) {
+        player.fixedUpdate(input, STEP);
+        physics.step();
+        input.jumpPressed = false;
+      }
+    };
+    run(0.1, { jumpPressed: true });
+    run(0.3, { jumpPressed: true });
+    run(1.5, { ascend: true });
+    expect(player.state.airborne).toBe(true);
+    expect(player.state.position.y).toBeGreaterThan(8);
+    run(8, { descend: true });
+    expect(player.state.state).toBe('GROUND');
+    expect(player.state.position.y).toBeCloseTo(REST, 2);
+    // Standing still stays down; no drifting up or falling through.
+    run(3);
+    expect(player.state.state).toBe('GROUND');
+    expect(player.state.position.y).toBeCloseTo(REST, 2);
+    run(1, { moveZ: 1 });
+    expect(player.state.state).toBe('GROUND');
+    expect(player.state.position.z).toBeLessThan(36);
   });
 });

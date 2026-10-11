@@ -17,6 +17,7 @@ export interface PresetValues {
   shadowRange: number;
   /** Multipliers, 1 is full. */
   particles: number;
+  trees: number;
   vehicles: number;
   pedestrians: number;
   rain: number;
@@ -31,6 +32,7 @@ export const PRESETS: Record<QualityPreset, PresetValues> = {
     shadowMapSize: 4096,
     shadowRange: 220,
     particles: 1,
+    trees: 1,
     vehicles: 1,
     pedestrians: 1,
     rain: 1,
@@ -42,6 +44,7 @@ export const PRESETS: Record<QualityPreset, PresetValues> = {
     shadowMapSize: 2048,
     shadowRange: 170,
     particles: 1,
+    trees: 1,
     vehicles: 1,
     pedestrians: 1,
     rain: 1,
@@ -53,6 +56,7 @@ export const PRESETS: Record<QualityPreset, PresetValues> = {
     shadowMapSize: 1024,
     shadowRange: 120,
     particles: 0.7,
+    trees: 0.75,
     vehicles: 0.8,
     pedestrians: 0.7,
     rain: 0.7,
@@ -64,6 +68,7 @@ export const PRESETS: Record<QualityPreset, PresetValues> = {
     shadowMapSize: 1024,
     shadowRange: 120,
     particles: 0.4,
+    trees: 0.45,
     vehicles: 0.5,
     pedestrians: 0.4,
     rain: 0.4,
@@ -75,6 +80,7 @@ export const PRESETS: Record<QualityPreset, PresetValues> = {
     shadowMapSize: 512,
     shadowRange: 80,
     particles: 0.3,
+    trees: 0.3,
     vehicles: 0.35,
     pedestrians: 0.25,
     rain: 0.3,
@@ -90,6 +96,7 @@ export function writePreset(preset: QualityPreset): void {
   Config.render.shadowMapSize = values.shadowMapSize;
   Config.render.shadowRange = values.shadowRange;
   Config.vfx.particleScale = values.particles;
+  Config.quality.trees = values.trees;
   Config.quality.vehicles = values.vehicles;
   Config.quality.pedestrians = values.pedestrians;
   Config.quality.rain = values.rain;

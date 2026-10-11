@@ -28,7 +28,7 @@ export class SoundBank {
 
     // Combat
     events.on('combat:hit', ({ kind }) => {
-      if (kind === 'blast') burst(0.35, 2400, 300, 0.12);
+      if (kind === 'blast') burst(0.16, 3400, 700, 0.09);
       else this.impact(kind === 'punch' ? 60 : 110);
     });
     events.on('combat:whiff', () => burst(0.12, 1800, 500, 0.1));
@@ -36,7 +36,12 @@ export class SoundBank {
       burst(0.2, 5000, 900, 0.14);
       if (audioRef.sfx) audioRef.sweep(audioRef.sfx, 1400, 500, 0.12, 0.12);
     });
-    events.on('combat:blastImpact', () => burst(0.18, 2000, 400, 0.1));
+    events.on('combat:blastImpact', () => burst(0.1, 2600, 500, 0.09));
+    // Overheating: the beam chokes out with a falling hiss; a soft chime says it is ready again.
+    events.on('combat:beamStopped', ({ overheated }) => {
+      if (overheated) burst(0.4, 4200, 220, 0.7);
+    });
+    events.on('combat:beamReady', () => tones([988, 1319], 0.06, 0.12));
     events.on('player:damaged', () => burst(0.5, 700, 150, 0.18));
     events.on('player:died', () => tones([330, 262, 196, 131], 0.16));
 

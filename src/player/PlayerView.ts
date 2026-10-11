@@ -1,6 +1,5 @@
 import {
   BoxGeometry,
-  Box3,
   CapsuleGeometry,
   Group,
   Mesh,
@@ -14,11 +13,15 @@ import { Config } from '../core/Config';
 import type { EventBus } from '../core/EventBus';
 import type { GameEvents } from '../core/GameEvents';
 import { clamp, damp } from '../utils/math';
+import { Cape } from './Cape';
+import { GroundContacts } from './GroundContacts';
 import { HeroRig } from './HeroRig';
 import { movementPose, type PoseName } from './heroPoses';
 import type { PlayerState } from './PlayerState';
 
 const UP = new Vector3(0, 1, 0);
+/** Between the eyes, in the model's rest pose and frame (+Z forward). */
+const EYES = new Vector3(0, 1.802, 0.09);
 
 /**
  * The hero as drawn: the Aether model posed by `HeroRig`, or a capsule if the
@@ -28,9 +31,12 @@ const UP = new Vector3(0, 1, 0);
 export class PlayerView {
   private readonly root = new Group();
   private readonly appearance = new Group();
-  private readonly bounds = new Box3();
   private readonly inverseRoot = new Quaternion();
   private readonly rig: HeroRig | null;
+  private readonly cape: Cape | null;
+  /** Between the eyes, in the head bone's frame. */
+  private readonly eyesInHead = new Vector3();
+  private readonly contacts: GroundContacts | null;
   private readonly bodyUp = new Vector3();
   private readonly direction = new Vector3();
   private readonly tilt = new Quaternion();
@@ -58,23 +64,35 @@ export class PlayerView {
       model.position.y = -Config.player.height / 2;
       model.traverse((node) => {
         node.castShadow = true;
-        // Cache bounds once; grounded pose correction must not allocate per frame.
-        if (node instanceof Mesh) node.geometry.computeBoundingBox();
+        // A skinned mesh is culled by its rest-pose bounds, which a pose can leave.
+        if (node instanceof Mesh) node.frustumCulled = false;
       });
       this.appearance.add(model);
-      this.rig = new HeroRig(model);
+      this.root.add(this.appearance);
+      scene.add(this.root);
+      // Everything below reads the rest pose, so it must run before the first update.
+      const rig = new HeroRig(model);
+      const chest = rig.joint('chest');
+      const pelvis = rig.joint('torso');
+      const contacts = new GroundContacts(model, (joint) => rig.joint(joint));
+      const head = rig.joint('head');
+      if (head) head.worldToLocal(model.localToWorld(this.eyesInHead.copy(EYES)));
+      this.rig = rig;
+      this.cape = chest && pelvis ? new Cape(scene, model, chest, pelvis) : null;
+      this.contacts = contacts.count > 0 ? contacts : null;
     } else {
       this.appearance.add(...createPlaceholder());
+      this.root.add(this.appearance);
+      scene.add(this.root);
       this.rig = null;
+      this.cape = null;
+      this.contacts = null;
     }
-    this.root.add(this.appearance);
-    scene.add(this.root);
 
     events.on('combat:hit', ({ kind }) => {
       if (kind !== 'blast') this.showAttack('punch', Config.hero.punchHold);
     });
     events.on('combat:whiff', () => this.showAttack('punch', Config.hero.punchHold));
-    events.on('combat:blastFired', () => this.showAttack('blast', Config.hero.blastHold));
     events.on('player:damaged', () => this.showAttack('damage', Config.hero.damageHold));
     // Hold the landing crouch a beat longer than the gameplay state lasts.
     events.on('player:state', ({ from, to }) => {
@@ -95,9 +113,18 @@ export class PlayerView {
     return this.root.position;
   }
 
+  /** Where the hero's eyes are drawn this frame: the heat beam starts here. */
+  eyes(out: Vector3): Vector3 {
+    const head = this.rig?.joint('head');
+    if (!head) return out.copy(this.root.position).addScaledVector(UP, Config.player.height * 0.42);
+    head.updateWorldMatrix(true, false);
+    return head.localToWorld(out.copy(this.eyesInHead));
+  }
+
   /** Whether the real model is in use, and the pose it is in. */
-  get debug(): { model: boolean; joints: number; pose: PoseName | null } {
+  get debug(): { model: boolean; joints: number; pose: PoseName | null; cape: boolean } {
     return {
+      cape: this.cape !== null,
       model: this.rig !== null,
       joints: this.rig?.jointCount ?? 0,
       pose: this.rig?.currentPose ?? null,
@@ -140,20 +167,30 @@ export class PlayerView {
     if (this.rig) {
       this.updatePose(frameDelta);
       this.groundAppearance(frameDelta);
+      // Last: the cape hangs from wherever the posed, grounded model ended up.
+      this.cape?.update(frameDelta, state.speed);
     }
   }
 
-  /** Keep the lowest posed boot/hand on the surface without moving the capsule or camera pivot. */
+  /**
+   * Keep the lowest posed heel, toe, knee or fist on the surface without moving
+   * the capsule or camera pivot.
+   */
   private groundAppearance(frameDelta: number): void {
     this.appearance.position.set(0, 0, 0);
-    if (this.state.airborne) {
+    if (this.state.airborne || !this.contacts) {
       this.groundOffset = damp(this.groundOffset, 0, Config.hero.groundReleaseResponse, frameDelta);
     } else {
       this.appearance.updateWorldMatrix(true, true);
-      this.bounds.setFromObject(this.appearance);
-      if (this.bounds.isEmpty()) return;
       const surfaceY = this.root.position.y - Config.player.height / 2;
-      this.groundOffset = surfaceY - this.bounds.min.y;
+      const needed = surfaceY - this.contacts.lowest();
+      // Rise at once so nothing sinks into the surface; settle slowly, so the body
+      // glides over the stride instead of dropping every time a foot leaves the ground.
+      const pose = this.rig?.currentPose;
+      const striding = pose === 'walkA' || pose === 'walkB' || pose === 'runA' || pose === 'runB';
+      const rate = striding ? Config.hero.strideSinkRate : Config.hero.groundSinkRate;
+      const settled = this.groundOffset - rate * frameDelta;
+      this.groundOffset = Math.max(needed, settled);
     }
     this.inverseRoot.copy(this.root.quaternion).invert();
     this.appearance.position.set(0, this.groundOffset, 0).applyQuaternion(this.inverseRoot);
@@ -169,9 +206,13 @@ export class PlayerView {
     const rig = this.rig;
     if (!rig) return;
 
-    if (state.state === 'GROUND') {
-      this.stridePhase +=
-        Math.hypot(state.velocity.x, state.velocity.z) * Config.hero.stridePerMetre * frameDelta;
+    const { sprintSpeed } = Config.ground;
+    const groundSpeed = Math.hypot(state.velocity.x, state.velocity.z);
+    if (state.state === 'GROUND' && groundSpeed > Config.hero.walkMinSpeed) {
+      // Steps come faster with speed, but not in proportion: the stride lengthens too.
+      const { cadenceSlow, cadenceFast } = Config.hero;
+      const pace = clamp(groundSpeed / sprintSpeed, 0, 1);
+      this.stridePhase += (cadenceSlow + (cadenceFast - cadenceSlow) * pace) * frameDelta;
     }
     this.attackTime -= frameDelta;
     if (this.attackTime <= 0) this.attackPose = null;
@@ -179,7 +220,11 @@ export class PlayerView {
     // Attacks override movement: a lunge in progress, a just-thrown attack, or a charge.
     let pose: PoseName;
     if (state.lungeTime > 0) pose = 'punch';
-    else if (
+    else if (state.beamActive) {
+      // Held for as long as the beam burns, and a moment after.
+      this.showAttack('blast', Config.hero.blastHold);
+      pose = 'blast';
+    } else if (
       this.attackPose === 'land' &&
       state.state === 'GROUND' &&
       state.speed > Config.hero.walkMinSpeed
@@ -191,7 +236,12 @@ export class PlayerView {
     else pose = movementPose(state, this.stridePhase);
 
     if (pose === 'walkA' || pose === 'walkB') {
-      rig.setWalk(this.stridePhase, state.speed / Config.ground.walkSpeed);
+      const { strideFullSpeed, runFromSpeed } = Config.hero;
+      rig.setWalk(
+        this.stridePhase,
+        groundSpeed / strideFullSpeed,
+        (groundSpeed - runFromSpeed) / (sprintSpeed - runFromSpeed),
+      );
     } else if (pose !== rig.currentPose) rig.setPose(pose);
     rig.update(frameDelta);
   }

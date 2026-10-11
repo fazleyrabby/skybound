@@ -2,12 +2,16 @@ import { Config } from '../core/Config';
 import type { PlayerState } from './PlayerState';
 
 /**
- * Joints of the Aether model, named as exported from Blender
- * (blender/characters/export_aether.py). The model is rigid segments on a
- * node hierarchy, not a skinned mesh, so a pose is one rotation per joint.
+ * Bones of the Aether model, named as exported from Blender
+ * (blender/characters/export_aether.py). `torso` is the pelvis and the root:
+ * the spine, chest, neck and head stack on it, the arms hang from the chest
+ * and the legs from the pelvis. A pose is one rotation per bone.
  */
 export const JOINTS = [
   'torso',
+  'spine',
+  'chest',
+  'neck',
   'head',
   'upper_arm.L',
   'forearm.L',
@@ -29,7 +33,8 @@ export type Joint = (typeof JOINTS)[number];
  * the hero faces), +X the hero's left. For a limb hanging down:
  *   negative X swings it forward, positive X swings it back;
  *   Z raises an arm out to the side (positive for the left arm, negative for the right).
- * Joints not listed stay at rest.
+ * Each rotation is relative to the parent bone, whatever way the bone itself
+ * points. Joints not listed stay at rest. A head rotation is shared with the neck.
  */
 export type Pose = Partial<Record<Joint, readonly [x: number, y: number, z: number]>>;
 
@@ -37,6 +42,8 @@ export type PoseName =
   | 'idle'
   | 'walkA'
   | 'walkB'
+  | 'runA'
+  | 'runB'
   | 'jump'
   | 'fall'
   | 'land'
@@ -78,6 +85,33 @@ export const POSES: Record<PoseName, Pose> = {
     'upper_arm.L': [-0.45, 0, 0.08],
     'forearm.R': [-0.5, 0, 0],
     'forearm.L': [-0.7, 0, 0],
+  },
+  // A sprint: longer stride, knees driving, arms pumping, body pitched forward.
+  runA: {
+    torso: [0.28, 0, 0],
+    head: [-0.2, 0, 0],
+    'thigh.L': [-1.05, 0, 0],
+    'shin.L': [0.9, 0, 0],
+    'thigh.R': [0.7, 0, 0],
+    'shin.R': [1.35, 0, 0],
+    'foot.R': [0.5, 0, 0],
+    'upper_arm.L': [0.9, 0, 0.1],
+    'upper_arm.R': [-0.95, 0, -0.1],
+    'forearm.L': [-1.5, 0, 0],
+    'forearm.R': [-1.6, 0, 0],
+  },
+  runB: {
+    torso: [0.28, 0, 0],
+    head: [-0.2, 0, 0],
+    'thigh.R': [-1.05, 0, 0],
+    'shin.R': [0.9, 0, 0],
+    'thigh.L': [0.7, 0, 0],
+    'shin.L': [1.35, 0, 0],
+    'foot.L': [0.5, 0, 0],
+    'upper_arm.R': [0.9, 0, -0.1],
+    'upper_arm.L': [-0.95, 0, 0.1],
+    'forearm.R': [-1.5, 0, 0],
+    'forearm.L': [-1.6, 0, 0],
   },
   jump: {
     torso: [0.08, 0, 0],
@@ -210,12 +244,19 @@ export const POSES: Record<PoseName, Pose> = {
     'thigh.R': [0.35, 0, 0],
     'shin.R': [0.3, 0, 0],
   },
+  // Heat beam: braced, chin down, fists clenched at the sides. The beam comes from the eyes.
   blast: {
-    head: [-0.2, 0, 0],
-    'upper_arm.R': [-1.55, 0, 0.05],
-    'hand.R': [-0.9, 0, 0],
-    'upper_arm.L': [0.1, 0, 0.3],
-    'forearm.L': [-0.5, 0, 0],
+    torso: [0.06, 0, 0],
+    chest: [0.08, 0, 0],
+    head: [0.1, 0, 0],
+    'upper_arm.L': [0.25, 0, 0.3],
+    'upper_arm.R': [0.25, 0, -0.3],
+    'forearm.L': [-0.75, 0, 0],
+    'forearm.R': [-0.75, 0, 0],
+    'thigh.L': [-0.12, 0, 0.05],
+    'shin.L': [0.25, 0, 0],
+    'thigh.R': [0.1, 0, -0.05],
+    'shin.R': [0.2, 0, 0],
   },
   damage: {
     torso: [-0.18, 0, 0.12],
@@ -241,6 +282,7 @@ export function movementPose(state: PlayerState, stridePhase: number): PoseName 
       return 'land';
     case 'GROUND':
       if (Math.hypot(state.velocity.x, state.velocity.z) < Config.hero.walkMinSpeed) return 'idle';
+      // The rig generates the stride itself (see gait.ts); the name says which leg leads.
       return Math.sin(stridePhase) > 0 ? 'walkA' : 'walkB';
     case 'JUMPING':
       return state.velocity.y > 0 ? 'jump' : 'fall';

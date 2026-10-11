@@ -5,7 +5,7 @@ const SIZE = 44;
 
 /**
  * Marks the current target: thin brackets for the soft auto-target, solid
- * while locked. Also a small fixed crosshair, so blasts can be aimed.
+ * while locked. Also a small fixed crosshair, so the heat beam can be aimed.
  */
 export class TargetReticle {
   private readonly marker: HTMLDivElement;

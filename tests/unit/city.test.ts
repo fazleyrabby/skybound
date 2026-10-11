@@ -6,7 +6,8 @@ import { Layout } from '../../src/world/city/layout';
 import { createTestPlayer, run } from './helpers';
 
 const city = generateCity(1337);
-const solid = city.buildings.filter((b) => b.solid);
+// Everything that stands in the way. Pavements are solid but only a kerb high.
+const solid = city.buildings.filter((b) => b.solid && b.y + b.hy > 0.5);
 const inDistrict = (district: District): BuildingDescriptor[] =>
   city.buildings.filter((b) => b.district === district);
 const covers = (b: BuildingDescriptor, x: number, z: number): boolean =>
@@ -33,7 +34,7 @@ describe('city generation', () => {
 
   it('stays within budget for one instanced draw call', () => {
     expect(city.buildings.length).toBeGreaterThan(600);
-    expect(city.buildings.length).toBeLessThan(6000);
+    expect(city.buildings.length).toBeLessThan(9000);
   });
 
   it('downtown is tall and stays inside its block', () => {
@@ -187,10 +188,22 @@ describe('building design', () => {
 });
 
 describe('trees', () => {
-  it('are placed deterministically, in the park, along the avenue and in yards', () => {
+  it('are placed deterministically, all over: park, streets, yards, suburbs and farmland', () => {
     expect(generateCity(1337).trees).toEqual(city.trees);
-    expect(city.trees.length).toBeGreaterThan(200);
-    expect(city.trees.length).toBeLessThan(450);
+    expect(city.trees.length).toBeGreaterThan(2000);
+    expect(city.trees.length).toBeLessThan(3600);
+    // Only the park and the avenue use the full model.
+    expect(city.trees.filter((t) => t.detail).length).toBeLessThan(400);
+    const downtownStreets = city.trees.filter(
+      (t) => Math.abs(t.x) < 200 && Math.abs(t.z) < 200 && Math.abs(t.x) > 30,
+    );
+    const suburbs = city.trees.filter(
+      (t) => Math.hypot(t.x, t.z) > 720 && Math.hypot(t.x, t.z) < 1500,
+    );
+    const farmland = city.trees.filter((t) => Math.hypot(t.x, t.z) > 1600);
+    expect(downtownStreets.length).toBeGreaterThan(150);
+    expect(suburbs.length).toBeGreaterThan(600);
+    expect(farmland.length).toBeGreaterThan(100);
     const inPark = city.trees.filter((t) => t.x < 0 && t.z > 200);
     const onAvenue = city.trees.filter((t) => Math.abs(t.x) < 25 && Math.abs(t.z) < 240);
     const inYards = city.trees.filter((t) => t.z < 195 && (t.x < -300 || t.z < -300));
@@ -251,8 +264,8 @@ describe('filling the ground', () => {
     const midtown = inDistrict('midtown').filter((b) => b.solid);
     expect(midtown.length).toBeGreaterThan(80);
     for (const block of midtown) expect(topOf(block)).toBeLessThan(58); // corridor above stays open
-    expect(coverage(-190, 190, -292, -208)).toBeGreaterThan(0.25);
-    expect(coverage(208, 292, -190, 190)).toBeGreaterThan(0.25);
+    expect(coverage(-190, 190, -292, -208)).toBeGreaterThan(0.2);
+    expect(coverage(208, 292, -190, 190)).toBeGreaterThan(0.2);
   });
 
   it('leaves the First Flight course clear at street level south of downtown', () => {

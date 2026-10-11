@@ -1,7 +1,7 @@
 import { Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import type { Damageable } from '../../src/combat/Damageable';
-import { Projectiles, type WorldRaycaster } from '../../src/combat/Projectiles';
+import type { WorldRaycaster } from '../../src/combat/HeatBeam';
 import { scoreTarget, Targeting } from '../../src/combat/Targeting';
 import { Config } from '../../src/core/Config';
 import { EventBus } from '../../src/core/EventBus';
@@ -81,8 +81,11 @@ function createArena(targets: Damageable[], world: WorldRaycaster = openSky) {
 
   const player = createTestPlayer(0, events);
   player.teleport(0, 100, 0);
-  const projectiles = new Projectiles(world, events);
-  const combat = new CombatController(player.state, () => targets, projectiles, events);
+  const stops: GameEvents['combat:beamStopped'][] = [];
+  const impacts: GameEvents['combat:blastImpact'][] = [];
+  events.on('combat:beamStopped', (stop) => stops.push(stop));
+  events.on('combat:blastImpact', (impact) => impacts.push(impact));
+  const combat = new CombatController(player.state, () => targets, world, events);
   let frozenSteps = 0;
 
   const step = (overrides: Partial<PlayerInput> = {}): void => {
@@ -94,12 +97,11 @@ function createArena(targets: Damageable[], world: WorldRaycaster = openSky) {
     combat.fixedUpdate(input, STEP);
     player.fixedUpdate(input, STEP);
     for (const target of targets) if (target instanceof OrbitingTarget) target.fixedUpdate(STEP);
-    projectiles.fixedUpdate(STEP, targets);
   };
   const run = (seconds: number, overrides: Partial<PlayerInput> = {}): void => {
     for (let i = 0; i < Math.round(seconds / STEP); i++) step(overrides);
   };
-  return { player, combat, projectiles, hits, whiffs, step, run, frozen: () => frozenSteps };
+  return { player, combat, hits, whiffs, stops, impacts, step, run, frozen: () => frozenSteps };
 }
 
 describe('targeting (spec section 14)', () => {
@@ -170,6 +172,65 @@ describe('targeting (spec section 14)', () => {
     const targeting = new Targeting();
     targeting.update(STEP, ORIGIN, FORWARD, [a], true);
     targeting.update(STEP, ORIGIN, FORWARD, [a], true);
+    expect(targeting.locked).toBe(false);
+  });
+});
+
+describe('hover lock', () => {
+  const onTarget = (): Damageable => fakeTarget(1, 0, 0, -100);
+
+  it('locks after the crosshair rests on a target, not before', () => {
+    const target = onTarget();
+    const targeting = new Targeting();
+    for (let t = 0; t < combatCfg.autoLockTime - 0.1; t += STEP) {
+      targeting.update(STEP, ORIGIN, FORWARD, [target], false);
+    }
+    expect(targeting.locked).toBe(false);
+    for (let t = 0; t < 0.2; t += STEP) targeting.update(STEP, ORIGIN, FORWARD, [target], false);
+    expect(targeting.locked).toBe(true);
+    expect(targeting.current).toBe(target);
+  });
+
+  it('does not lock a target that is in view but not under the crosshair', () => {
+    const target = fakeTarget(1, 12, 0, -100); // about 7 degrees off centre
+    const targeting = new Targeting();
+    for (let t = 0; t < 2; t += STEP) targeting.update(STEP, ORIGIN, FORWARD, [target], false);
+    expect(targeting.current).toBe(target);
+    expect(targeting.locked).toBe(false);
+  });
+
+  it('sweeping the crosshair past a target does not lock it', () => {
+    const target = onTarget();
+    const targeting = new Targeting();
+    const aside = new Vector3(0.2, 0, -1).normalize();
+    for (let i = 0; i < 40; i++) {
+      // On it for a few frames, then off again, repeatedly.
+      targeting.update(STEP, ORIGIN, i % 10 < 4 ? FORWARD : aside, [target], false);
+    }
+    expect(targeting.locked).toBe(false);
+  });
+
+  it('after unlocking by hand it stays unlocked until the crosshair leaves and returns', () => {
+    const target = onTarget();
+    const targeting = new Targeting();
+    for (let t = 0; t < 1; t += STEP) targeting.update(STEP, ORIGIN, FORWARD, [target], false);
+    expect(targeting.locked).toBe(true);
+    targeting.update(STEP, ORIGIN, FORWARD, [target], true);
+    for (let t = 0; t < 2; t += STEP) targeting.update(STEP, ORIGIN, FORWARD, [target], false);
+    expect(targeting.locked).toBe(false);
+
+    const aside = new Vector3(0.3, 0, -1).normalize();
+    targeting.update(STEP, ORIGIN, aside, [target], false);
+    for (let t = 0; t < 1; t += STEP) targeting.update(STEP, ORIGIN, FORWARD, [target], false);
+    expect(targeting.locked).toBe(true);
+  });
+
+  it('can be turned off', () => {
+    const target = onTarget();
+    const targeting = new Targeting();
+    combatCfg.autoLock = 0;
+    for (let t = 0; t < 2; t += STEP) targeting.update(STEP, ORIGIN, FORWARD, [target], false);
+    combatCfg.autoLock = 1;
     expect(targeting.locked).toBe(false);
   });
 });
@@ -305,31 +366,53 @@ describe('dash attack', () => {
   });
 });
 
-describe('energy blast', () => {
-  it('costs energy, travels and damages the target', () => {
-    const target = fakeTarget(1, 0, 100, -150);
+describe('heat beam', () => {
+  const tick = combatCfg.beamDamagePerSecond * combatCfg.beamTick;
+
+  it('burns the target for as long as it is held on it, starting at once', () => {
+    const target = fakeTarget(1, 0, 100.8, -150);
+    target.health = 1000;
     const arena = createArena([target]);
     arena.step({ blast: true });
-    expect(arena.player.state.energy).toBeCloseTo(Config.vitals.maxEnergy - combatCfg.blastCost, 0);
-    arena.run(1);
+    expect(arena.combat.beam.active).toBe(true);
+    expect(arena.combat.beam.contact).toBe('target');
     expect(arena.hits.map((hit) => hit.kind)).toEqual(['blast']);
-    expect(target.health).toBe(100 - combatCfg.blastDamage);
+    expect(target.health).toBeCloseTo(1000 - tick, 6);
+    arena.run(1, { blast: true });
+    // A second of beam does a second's worth of damage, give or take a tick.
+    expect(1000 - target.health).toBeGreaterThan(combatCfg.beamDamagePerSecond - tick);
+    expect(1000 - target.health).toBeLessThan(combatCfg.beamDamagePerSecond + 2 * tick);
+    // It ends on the target's surface, not at its centre or beyond it.
+    const reach = arena.combat.beam.origin.distanceTo(arena.combat.beam.end);
+    expect(reach).toBeGreaterThan(140);
+    expect(reach).toBeLessThan(150);
+    // Letting go stops it, and stops the damage.
+    const health = target.health;
+    arena.run(0.5);
+    expect(arena.combat.beam.active).toBe(false);
+    expect(target.health).toBe(health);
+    expect(arena.stops).toEqual([{ overheated: false }]);
   });
 
-  it('leads a moving target that is near the crosshair', () => {
-    const target = fakeTarget(1, 5, 100, -150);
-    target.velocity.set(20, 0, 0);
-    const arena = createArena([target]);
-    arena.step({ blast: true });
-    for (let i = 0; i < 60 && arena.hits.length === 0; i++) {
-      target.position.addScaledVector(target.velocity, STEP);
-      arena.step();
-    }
-    expect(arena.hits).toHaveLength(1);
+  it('bends onto a locked target near the crosshair, and misses one that is not', () => {
+    const near = fakeTarget(1, 6, 100, -150);
+    const arena = createArena([near]);
+    arena.run(0.3, { blast: true });
+    expect(arena.hits.length).toBeGreaterThan(0);
+
+    const wide = fakeTarget(1, 45, 100, -150);
+    const off = createArena([wide]);
+    off.run(0.3, { blast: true });
+    expect(off.hits).toHaveLength(0);
+    expect(off.combat.beam.contact).toBe('none');
+    expect(off.combat.beam.origin.distanceTo(off.combat.beam.end)).toBeCloseTo(
+      combatCfg.beamRange,
+      3,
+    );
   });
 
-  it('stops at the world instead of passing through it', () => {
-    const target = fakeTarget(1, 0, 100, -150);
+  it('stops at the world instead of passing through it, and scorches it', () => {
+    const target = fakeTarget(1, 0, 100.8, -150);
     const wall: WorldRaycaster = {
       castRay: (origin, direction, max) => {
         const distance = (origin.z - -60) / -direction.z;
@@ -337,21 +420,54 @@ describe('energy blast', () => {
       },
     };
     const arena = createArena([target], wall);
-    arena.step({ blast: true });
-    arena.run(1);
+    arena.run(0.5, { blast: true });
     expect(arena.hits).toHaveLength(0);
     expect(target.health).toBe(100);
-    expect(arena.projectiles.pool.some((p) => p.active)).toBe(false);
+    expect(arena.combat.beam.contact).toBe('world');
+    expect(arena.combat.beam.end.z).toBeCloseTo(-60, 3);
+    expect(arena.impacts.length).toBeGreaterThanOrEqual(4);
   });
 
-  it('cannot fire without enough energy, and the pool never grows', () => {
+  it('overheats, cuts out, and will not fire again until it has cooled', () => {
     const arena = createArena([]);
-    arena.player.state.energy = combatCfg.blastCost - 1;
-    arena.step({ blast: true });
-    expect(arena.projectiles.pool.some((p) => p.active)).toBe(false);
     arena.player.state.energy = 1e6;
-    arena.run(3, { blast: true });
-    expect(arena.projectiles.pool).toHaveLength(combatCfg.maxProjectiles);
+    arena.run(combatCfg.beamOverheatTime - 0.2, { blast: true });
+    expect(arena.combat.beam.active).toBe(true);
+    expect(arena.player.state.beamHeat).toBeGreaterThan(0.9);
+    arena.run(0.4, { blast: true });
+    expect(arena.combat.beam.active).toBe(false);
+    expect(arena.combat.beam.overheated).toBe(true);
+    expect(arena.player.state.beamOverheated).toBe(true);
+    expect(arena.stops).toEqual([{ overheated: true }]);
+
+    // Still holding the button: nothing, until it is back down to the resume level.
+    const cooling = (1 - combatCfg.beamResumeHeat) * combatCfg.beamCoolTime;
+    arena.run(cooling - 0.3, { blast: true });
+    expect(arena.combat.beam.active).toBe(false);
+    arena.run(0.5, { blast: true });
+    expect(arena.combat.beam.overheated).toBe(false);
+    expect(arena.combat.beam.active).toBe(true);
+  });
+
+  it('short bursts never overheat: heat falls while it is off', () => {
+    const arena = createArena([]);
+    arena.player.state.energy = 1e6;
+    for (let i = 0; i < 12; i++) {
+      arena.run(0.8, { blast: true });
+      arena.run(0.8);
+    }
+    expect(arena.stops.some((stop) => stop.overheated)).toBe(false);
+    expect(arena.player.state.beamHeat).toBeLessThan(0.5);
+  });
+
+  it('drains energy and goes out when there is none', () => {
+    const arena = createArena([]);
+    const before = arena.player.state.energy;
+    arena.run(1, { blast: true });
+    expect(arena.player.state.energy).toBeLessThan(before - 3);
+    arena.player.state.energy = 0;
+    arena.step({ blast: true });
+    expect(arena.combat.beam.active).toBe(false);
   });
 });
 

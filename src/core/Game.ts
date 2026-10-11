@@ -5,7 +5,6 @@ import { intensityFor, MusicManager } from '../audio/MusicManager';
 import { SoundBank } from '../audio/SoundBank';
 import { CameraRig } from '../camera/CameraRig';
 import type { Damageable } from '../combat/Damageable';
-import { Projectiles } from '../combat/Projectiles';
 import { PerfOverlay } from '../debug/PerfOverlay';
 import { installTestHook, isDebugEnabled } from '../debug/testHook';
 import { DebugMenu } from '../debug/DebugMenu';
@@ -25,6 +24,7 @@ import { Atmosphere } from '../rendering/Atmosphere';
 import { addBuildings } from '../rendering/BuildingRenderer';
 import { addEnvironment } from '../rendering/Environment';
 import { FollowerRenderer } from '../rendering/FollowerRenderer';
+import { BeamView } from '../vfx/BeamView';
 import { ProjectileRenderer } from '../rendering/ProjectileRenderer';
 import { TreeRenderer } from '../rendering/TreeRenderer';
 import { Water } from '../rendering/Water';
@@ -64,8 +64,6 @@ import type { GameEvents } from './GameEvents';
 import { GameLoop } from './GameLoop';
 import { store } from './store';
 
-const GROUND_HALF_THICKNESS = 0.5;
-
 /** Patrol posts for hostile drones, away from the spawn roof so free flight starts in peace. */
 const DRONE_POSTS: ReadonlyArray<readonly [x: number, y: number, z: number]> = [
   [-120, 370, 150],
@@ -81,15 +79,12 @@ const DRONE_POSTS: ReadonlyArray<readonly [x: number, y: number, z: number]> = [
 ];
 
 /** Width, height, length in metres. */
-const VEHICLE_SIZE = [2, 1.5, 4.4] as const;
-const PEDESTRIAN_SIZE = [0.5, 1.7, 0.35] as const;
 
 function formatHour(hour: number): string {
   const minutes = Math.floor((hour % 1) * 60);
   return `${String(Math.floor(hour)).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 }
 
-const BLAST_STYLE = { color: 0x7fe7ff, thickness: 0.35, length: 5 };
 const BULLET_STYLE = { color: 0xffa040, thickness: 0.22, length: 4 };
 const MISSILE_STYLE = { color: 0xff5040, thickness: 0.7, length: 2.6 };
 
@@ -109,39 +104,28 @@ export class Game {
     });
 
     // World: descriptors feed both the colliders and the instanced mesh.
-    // Land and water share one flat collider: water is a solid surface for now.
+    // Land and water share one flat plane: water is a solid surface for now.
     const worldHalfSize = Config.world.halfSize;
     const city = generateCity();
-    physics.addStaticCuboid(
-      0,
-      -GROUND_HALF_THICKNESS,
-      0,
-      worldHalfSize,
-      GROUND_HALF_THICKNESS,
-      worldHalfSize,
-    );
+    physics.addGround(0);
     for (const b of city.buildings) {
       if (b.solid) physics.addStaticCuboid(b.x, b.y, b.z, b.hx, b.hy, b.hz);
     }
     const ground = addEnvironment(renderer.scene, {
       worldHalfSize,
       shore: city.shore,
-      gridHalfSize: Layout.coreHalf + 100,
+      coreHalfSize: Layout.coreHalf,
     });
     const buildings = addBuildings(renderer.scene, city.buildings);
 
     // Street life: chunks decide where it runs; traffic and pedestrians follow the roads.
     const chunks = new ChunkManager();
     const streetLife = new StreetLife(city.roads, chunks, Config.world.seed);
-    const vehicleRenderer = new FollowerRenderer(
-      renderer.scene,
-      Config.world.vehicleCount,
-      VEHICLE_SIZE,
-    );
+    const vehicleRenderer = new FollowerRenderer(renderer.scene, Config.world.vehicleCount, 'car');
     const pedestrianRenderer = new FollowerRenderer(
       renderer.scene,
       Config.world.pedestrianCount,
-      PEDESTRIAN_SIZE,
+      'person',
     );
 
     // Time of day and weather drive the sky, light, fog, lit windows and rain.
@@ -165,9 +149,12 @@ export class Game {
     applyQuality();
 
     // Player: spawn standing on the central rooftop.
-    const { height, radius, skin, maxSlope } = Config.player;
+    const { height, radius, skin, maxSlope, stepHeight } = Config.player;
     const spawn = new Vector3(city.spawn.x, city.spawn.y + height / 2 + skin, city.spawn.z);
-    const mover = physics.createCharacterMover({ height, radius, skin, maxSlope }, spawn);
+    const mover = physics.createCharacterMover(
+      { height, radius, skin, maxSlope, stepHeight },
+      spawn,
+    );
     const player = new Player(mover, spawn, events);
     const assets = new AssetManager();
     const heroModel = await assets.loadModel('hero');
@@ -248,17 +235,18 @@ export class Game {
         }
       }
     });
-    const projectiles = new Projectiles(physics, events);
-    const combat = new CombatController(player.state, () => targets, projectiles, events);
+    const combat = new CombatController(player.state, () => targets, physics, events);
     const droneViews = enemies.drones.map((drone) => new DroneView(renderer.scene, drone));
     const shotRenderers = [
-      new ProjectileRenderer(renderer.scene, projectiles.pool, BLAST_STYLE),
       new ProjectileRenderer(renderer.scene, enemies.fire.bullets, BULLET_STYLE),
       new ProjectileRenderer(renderer.scene, enemies.fire.missiles, MISSILE_STYLE),
     ];
 
     // Presentation: reads player state and listens to events; gameplay knows none of it.
     const cameraRig = new CameraRig(renderer.camera, player.state, physics, events);
+    const beamView = new BeamView(renderer.scene, renderer.camera, combat.beam, (out) =>
+      playerView.eyes(out),
+    );
     const vfx = new FlightVfx(renderer.scene, renderer.camera, player.state, events);
     const rain = new Rain(renderer.camera, player.state);
     const audio = new AudioManager();
@@ -370,7 +358,6 @@ export class Game {
           if (!combat.consumeHitStop(playerInput, step)) {
             combat.fixedUpdate(playerInput, step);
             player.fixedUpdate(playerInput, step);
-            projectiles.fixedUpdate(step, targets);
             enemies.fixedUpdate(step);
             boss.fixedUpdate(step);
             refreshTargets();
@@ -399,15 +386,18 @@ export class Game {
             streetLife.vehicleBuffer,
             streetLife.vehicleColors,
             streetLife.visibleVehicles,
+            frameDelta,
           );
           pedestrianRenderer.update(
             streetLife.pedestrianBuffer,
             streetLife.pedestrianColors,
             streetLife.visiblePedestrians,
+            loop.paused ? 0 : frameDelta,
           );
           cameraRig.update(alpha, frameDelta);
+          beamView.update(frameDelta);
           vfx.update(frameDelta);
-          atmosphere.update(dayNight.sample, playerView.position, weather.rain);
+          atmosphere.update(dayNight.sample, playerView.position, weather.rain, frameDelta);
           water.update(frameDelta, dayNight.sample, weather.rain);
           trees.update(frameDelta, weather.rain);
           rain.update(frameDelta, weather.rain);
@@ -518,6 +508,7 @@ export class Game {
           },
         },
         simMs: () => loop.stats.lastSimMs,
+        simStepMs: () => loop.stats.lastStepMs,
       });
     }
 

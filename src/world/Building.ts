@@ -33,6 +33,8 @@ export interface BuildingDescriptor {
   windows: boolean;
   /** Lights up at night: lamp heads, signs, billboards. */
   glow: boolean;
+  /** A driving surface: the top face gets lane markings. */
+  road: boolean;
 }
 
 export interface BoxOptions {
@@ -41,6 +43,7 @@ export interface BoxOptions {
   solid?: boolean;
   windows?: boolean;
   glow?: boolean;
+  road?: boolean;
 }
 
 /** Collects boxes for one district, addressed by footprint centre, size and height. */
@@ -72,6 +75,7 @@ export class BoxBuilder {
       solid: options.solid ?? true,
       windows: options.windows ?? false,
       glow: options.glow ?? false,
+      road: options.road ?? false,
     };
     this.out.push(box);
     return box;

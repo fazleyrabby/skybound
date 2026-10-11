@@ -112,7 +112,7 @@ const TIER_SHRINK = 0.2;
 const PODIUM_OVERHANG = 2.5;
 
 /** A podium, stepped tiers that narrow toward the top, and rooftop plant. */
-function addTower(
+export function addTower(
   boxes: BoxBuilder,
   rng: Rng,
   x: number,
@@ -144,7 +144,8 @@ function addTower(
     });
     baseY += height * share;
   });
-  if (top) addRoofPlant(boxes, rng, top, rng.next() < 0.45);
+  if (top && height > 205 && rng.next() < 0.55) addCrown(boxes, rng, top, color);
+  else if (top) addRoofPlant(boxes, rng, top, rng.next() < 0.45);
 
   // Some towers carry a billboard on one face, a few storeys up: colour by day, light by night.
   if (rng.next() < 0.4) {
@@ -160,7 +161,12 @@ function addTower(
 }
 
 /** Air handlers and, on some roofs, a mast. Decoration only: nothing to snag on. */
-function addRoofPlant(boxes: BoxBuilder, rng: Rng, roof: BuildingDescriptor, mast: boolean): void {
+export function addRoofPlant(
+  boxes: BoxBuilder,
+  rng: Rng,
+  roof: BuildingDescriptor,
+  mast: boolean,
+): void {
   const y = topOf(roof);
   const units = 2 + Math.floor(rng.next() * 3);
   for (let i = 0; i < units; i++) {
@@ -174,9 +180,43 @@ function addRoofPlant(boxes: BoxBuilder, rng: Rng, roof: BuildingDescriptor, mas
       { baseY: y, solid: false },
     );
   }
+  // Lower roofs often carry a water tank on legs.
+  if (!mast && y < 150 && roof.hx > 5 && roof.hz > 5 && rng.next() < 0.3) {
+    const x = roof.x + rng.range(-0.5, 0.5) * roof.hx;
+    const z = roof.z + rng.range(-0.5, 0.5) * roof.hz;
+    for (const dx of [-1.1, 1.1]) {
+      for (const dz of [-1.1, 1.1]) {
+        boxes.add(x + dx, z + dz, 0.22, 0.22, 2.4, Palette.roofUnit, { ...DECOR, baseY: y });
+      }
+    }
+    boxes.add(x, z, 3, 3, 3.2, WATER_TANK, { ...DECOR, baseY: y + 2.4 });
+    boxes.add(x, z, 3.4, 3.4, 0.3, Palette.roofUnit, { ...DECOR, baseY: y + 5.6 });
+  }
   if (mast) {
     const height = rng.range(14, 34);
     boxes.add(roof.x, roof.z, 0.5, 0.5, height, Palette.antenna, { ...DECOR, baseY: y });
     boxes.add(roof.x, roof.z, 2.2, 2.2, 1.2, Palette.roofUnit, { ...DECOR, baseY: y });
   }
+}
+
+const WATER_TANK = 0x6b4a34;
+
+/** The tallest towers finish in a stepped crown and a spire instead of plant. */
+function addCrown(boxes: BoxBuilder, rng: Rng, roof: BuildingDescriptor, color: number): void {
+  let y = topOf(roof);
+  let scale = 0.62;
+  for (const height of [rng.range(7, 11), rng.range(8, 13)]) {
+    boxes.add(roof.x, roof.z, roof.hx * 2 * scale, roof.hz * 2 * scale, height, color, {
+      ...DECOR,
+      baseY: y,
+      windows: true,
+    });
+    y += height;
+    scale *= 0.55;
+  }
+  boxes.add(roof.x, roof.z, 1.4, 1.4, 6, Palette.roofUnit, { ...DECOR, baseY: y });
+  boxes.add(roof.x, roof.z, 0.45, 0.45, rng.range(22, 40), Palette.antenna, {
+    ...DECOR,
+    baseY: y + 6,
+  });
 }

@@ -18,6 +18,8 @@ export interface Settings {
   reduceFlashes: boolean;
   /** Contextual control hints for new players. */
   showHints: boolean;
+  /** Resting the crosshair on a target locks onto it. */
+  autoLock: boolean;
   masterVolume: number;
   musicVolume: number;
   sfxVolume: number;
@@ -33,6 +35,7 @@ export const DEFAULT_SETTINGS: Settings = {
   speedEffects: true,
   reduceFlashes: false,
   showHints: true,
+  autoLock: true,
   masterVolume: 0.6,
   musicVolume: 0.5,
   sfxVolume: 1,
@@ -69,7 +72,13 @@ export function sanitizeSettings(value: unknown): Settings {
       result[key] = Math.min(max, Math.max(min, field));
     }
   }
-  for (const key of ['invertY', 'speedEffects', 'reduceFlashes', 'showHints'] as const) {
+  for (const key of [
+    'invertY',
+    'speedEffects',
+    'reduceFlashes',
+    'showHints',
+    'autoLock',
+  ] as const) {
     if (typeof source[key] === 'boolean') result[key] = source[key];
   }
   if (typeof source.quality === 'string' && QUALITY_CHOICES.includes(source.quality)) {
@@ -87,6 +96,7 @@ export function applySettings(settings: Settings): void {
   Config.camera.shakeScale = settings.cameraShake;
   Config.vfx.speedLineOpacity = settings.speedEffects ? BASE_SPEED_LINE_OPACITY : 0;
   Config.vfx.flashScale = settings.reduceFlashes ? 0 : 1;
+  Config.combat.autoLock = settings.autoLock ? 1 : 0;
   Config.audio.masterVolume = settings.masterVolume;
   Config.audio.musicVolume = settings.musicVolume;
   Config.audio.sfxVolume = settings.sfxVolume;

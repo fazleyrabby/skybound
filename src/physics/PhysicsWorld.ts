@@ -8,12 +8,16 @@ export interface CharacterShape {
   height: number;
   skin: number;
   maxSlope: number;
+  /** Tallest ledge walked up without jumping. */
+  stepHeight: number;
 }
 
 const IDENTITY_ROTATION = { x: 0, y: 0, z: 0, w: 1 };
 const DOWN = { x: 0, y: -1, z: 0 };
 /** The ground probe starts this far above the capsule, so it still works after sinking in. */
 const GROUND_PROBE_LIFT = 0.6;
+/** Squared length below which a move is treated as standing still. */
+const MIN_MOVE_SQ = 1e-12;
 
 /** The only module that imports Rapier. */
 export class PhysicsWorld {
@@ -35,6 +39,19 @@ export class PhysicsWorld {
   addStaticCuboid(x: number, y: number, z: number, hx: number, hy: number, hz: number): void {
     const body = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(x, y, z));
     this.world.createCollider(RAPIER.ColliderDesc.cuboid(hx, hy, hz), body);
+  }
+
+  /**
+   * The ground: everything below `topY`, without edges. A plane rather than a very
+   * large box, because shape casts against a box kilometres wide lose enough
+   * precision to bounce a walking character up and down.
+   */
+  addGround(topY: number): void {
+    const body = this.world.createRigidBody(
+      RAPIER.RigidBodyDesc.fixed().setTranslation(0, topY, 0),
+    );
+    const plane = new RAPIER.ColliderDesc(new RAPIER.HalfSpace({ x: 0, y: 1, z: 0 }));
+    this.world.createCollider(plane, body);
   }
 
   /** Kinematic capsule moved by swept casts. `position` is the capsule centre. */
@@ -61,13 +78,44 @@ export class PhysicsWorld {
     controller.setMaxSlopeClimbAngle(shape.maxSlope);
     controller.setMinSlopeSlideAngle(shape.maxSlope);
     controller.setApplyImpulsesToDynamicBodies(false);
+    // Kerbs and door sills: step up onto anything this low rather than stopping at it.
+    controller.enableAutostep(shape.stepHeight, shape.radius * 0.5, false);
 
     // The body only reaches its next translation on world.step(), so the mover
     // tracks the authoritative position itself.
     const current = { x: position.x, y: position.y, z: position.z };
 
+    /** Whether there is a surface within a skin's width under the capsule where it is now. */
+    const restingOnGround = (): boolean => {
+      probeOrigin.x = current.x;
+      probeOrigin.y = current.y + GROUND_PROBE_LIFT;
+      probeOrigin.z = current.z;
+      const hit = this.world.castShape(
+        probeOrigin,
+        IDENTITY_ROTATION,
+        DOWN,
+        capsule,
+        0,
+        GROUND_PROBE_LIFT + shape.skin * 2,
+        true,
+        undefined,
+        undefined,
+        undefined,
+        body,
+      );
+      return hit !== null;
+    };
+
     return {
       move: (desired: Vector3, out: MoveResult): void => {
+        // Nothing to sweep. Asked to move nowhere, the controller invents a
+        // correction against the ground plane, so do not ask.
+        if (desired.lengthSq() < MIN_MOVE_SQ) {
+          out.movement.set(0, 0, 0);
+          out.grounded = restingOnGround();
+          out.hitCount = 0;
+          return;
+        }
         controller.computeColliderMovement(collider, desired);
         const moved = controller.computedMovement();
         out.movement.set(moved.x, moved.y, moved.z);

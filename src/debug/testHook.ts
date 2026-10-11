@@ -1,4 +1,5 @@
 import { Vector3 } from 'three';
+import { Config } from '../core/Config';
 import type { LoopStats } from '../core/GameLoop';
 import type { BossFight } from '../enemies/boss/BossFight';
 import type { EnemyManager } from '../enemies/EnemyManager';
@@ -112,6 +113,8 @@ export interface TestHook {
   setQuality(choice: QualityPreset | 'auto'): void;
   /** Milliseconds the simulation took on the last frame. */
   readonly simMs: number;
+  /** Milliseconds one fixed step took, averaged over the last frame's steps. */
+  readonly simStepMs: number;
   /** Jumps the clock to an hour (0..24) and holds it there. */
   setTime(hour: number): void;
   setWeather(weather: Weather): void;
@@ -131,6 +134,8 @@ export interface TestHook {
   setAim(yaw: number, pitch: number): void;
   /** Places the player hovering at a point, for reaching far parts of the map quickly. */
   teleport(x: number, y: number, z: number): void;
+  /** Sets one numeric developer tunable, e.g. `tune('camera', 'distance', 3)`. Returns whether it exists. */
+  tune(section: string, key: string, value: number): boolean;
 }
 
 declare global {
@@ -168,6 +173,7 @@ export function installTestHook(sources: {
     set(choice: QualityPreset | 'auto'): void;
   };
   simMs: () => number;
+  simStepMs: () => number;
 }): void {
   let errorCount = 0;
   window.addEventListener('error', () => errorCount++);
@@ -299,6 +305,9 @@ export function installTestHook(sources: {
     get simMs() {
       return sources.simMs();
     },
+    get simStepMs() {
+      return sources.simStepMs();
+    },
     setTime: (hour) => {
       sources.dayNight.frozen = true;
       sources.dayNight.setHour(hour);
@@ -319,6 +328,12 @@ export function installTestHook(sources: {
     setAim: (yaw, pitch) => {
       player.state.aim.yaw = yaw;
       player.state.aim.pitch = pitch;
+    },
+    tune: (section, key, value) => {
+      const group = (Config as unknown as Record<string, Record<string, unknown>>)[section];
+      if (!group || typeof group[key] !== 'number') return false;
+      group[key] = value;
+      return true;
     },
   };
 }

@@ -18,7 +18,7 @@ export interface PlayerInput {
   /** Punch is held (charging a heavy punch). */
   punch: boolean;
   punchPressed: boolean;
-  /** Energy blast is held; fires repeatedly on its cooldown. */
+  /** Heat beam is held. */
   blast: boolean;
   dashPressed: boolean;
   lockPressed: boolean;
@@ -107,6 +107,10 @@ export class PlayerState {
   readonly lungeVelocity = new Vector3();
   /** 0..1 charge of a held punch; 1 means releasing gives a heavy punch. */
   punchCharge = 0;
+  /** The heat beam, mirrored here for presentation: on, how hot (0..1), and cut out. */
+  beamActive = false;
+  beamHeat = 0;
+  beamOverheated = false;
   /** 0..1: how far into the world-edge headwind the player is. */
   boundsPressure = 0;
   /** Speed into the surface of the most recent collision, m/s. */

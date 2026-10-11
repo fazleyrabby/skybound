@@ -69,7 +69,7 @@ export function buildHarbor(out: BuildingDescriptor[], rng: Rng): void {
   const bridgeZ = 200;
   const start = shore - 20;
   const length = 520;
-  boxes.add(start + length / 2, bridgeZ, length, 18, 3, Palette.highway, { baseY: 30 });
+  boxes.add(start + length / 2, bridgeZ, length, 18, 3, Palette.highway, { baseY: 30, road: true });
   for (const along of [0.3, 0.7]) {
     const x = start + length * along;
     boxes.add(x, bridgeZ - 12, 6, 6, 95, Palette.stone);

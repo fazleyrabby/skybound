@@ -26,15 +26,16 @@ export interface AtmosphereTargets {
 }
 
 const SKY_RADIUS = 9000;
+/** Share of the sky covered by cloud in clear weather. */
+const CLEAR_CLOUD_COVER = 0.46;
 const LIGHT_DISTANCE = 800;
 const RAIN_FOG = new Color(0x6f7884);
-const HEADLIGHT = new Color(0xffe2a8);
 const fogColor = new Color();
 const snapped = new Vector3();
 
 /**
- * Sky, light and air (spec sections 41, 42): a gradient sky dome with a sun
- * glow, hemisphere and directional light driven by the time of day, one shadow
+ * Sky, light and air (spec sections 41, 42): a sky dome with gradient, sun and
+ * moon, stars and drifting clouds, hemisphere and directional light driven by the time of day, one shadow
  * map that follows the player, and fog that thickens in rain.
  */
 export class Atmosphere {
@@ -72,6 +73,9 @@ export class Atmosphere {
         uSunDirection: { value: new Vector3(0, 1, 0) },
         uSunColor: { value: new Color() },
         uSunGlow: { value: 1 },
+        uTime: { value: 0 },
+        uNight: { value: 0 },
+        uCloudCover: { value: 0.45 },
       },
       vertexShader: `
         varying vec3 vDirection;
@@ -85,7 +89,32 @@ export class Atmosphere {
         uniform vec3 uSunDirection;
         uniform vec3 uSunColor;
         uniform float uSunGlow;
+        uniform float uTime;
+        uniform float uNight;
+        uniform float uCloudCover;
         varying vec3 vDirection;
+
+        float hash(vec2 p) {
+          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+        }
+        float noise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+                     mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+        }
+        float fbm(vec2 p) {
+          float sum = 0.0;
+          float amplitude = 0.5;
+          for (int i = 0; i < 5; i++) {
+            sum += noise(p) * amplitude;
+            p = p * 2.03 + vec2(17.3, 9.1);
+            amplitude *= 0.5;
+          }
+          return sum;
+        }
+
         void main() {
           vec3 direction = normalize(vDirection);
           float height = clamp(direction.y, 0.0, 1.0);
@@ -93,7 +122,38 @@ export class Atmosphere {
           // Below the horizon, fade to the horizon colour so the dome has no hard floor.
           color = mix(color, uHorizon, smoothstep(0.0, -0.25, direction.y));
           float toSun = max(dot(direction, uSunDirection), 0.0);
-          color += uSunColor * (pow(toSun, 600.0) * 2.5 + pow(toSun, 12.0) * 0.22) * uSunGlow;
+
+          // Stars: fixed points on the dome, out at night, twinkling slightly.
+          if (uNight > 0.01 && direction.y > 0.0) {
+            vec3 cell = floor(direction * 260.0);
+            float seed = hash(cell.xy + cell.z * 17.0);
+            float star = step(0.9965, seed) * (0.6 + 0.4 * sin(uTime * 2.0 + seed * 90.0));
+            color += vec3(0.9, 0.95, 1.0) * star * uNight * smoothstep(0.0, 0.25, direction.y);
+          }
+
+          // Sun by day, a crisp moon disc by night, each with a soft glow.
+          float disc = mix(smoothstep(0.99975, 0.99990, toSun), smoothstep(0.99955, 0.99965, toSun), uNight);
+          color += uSunColor * (disc * 3.0 + pow(toSun, 600.0) * 1.2 + pow(toSun, 12.0) * 0.22) * uSunGlow;
+
+          // Clouds: a layer of drifting noise projected onto a plane overhead.
+          if (direction.y > 0.012) {
+            vec2 plane = direction.xz / (direction.y + 0.09);
+            vec2 drift = vec2(uTime * 0.006, uTime * 0.0025);
+            float density = fbm(plane * 0.55 + drift) * 0.75 + fbm(plane * 1.7 - drift * 1.6) * 0.25;
+            float cover = smoothstep(1.0 - uCloudCover, 1.0 - uCloudCover + 0.28, density);
+            // Lit from the sun's side: sample the same field a little toward the light.
+            float towardLight = fbm((plane + uSunDirection.xz * 0.22) * 0.55 + drift);
+            float shade = clamp(0.55 + (density - towardLight) * 2.4, 0.0, 1.0);
+            vec3 sunlit = mix(vec3(1.0), uSunColor, 0.35) * (1.0 - uNight * 0.86);
+            vec3 shadowed = mix(uTop, vec3(0.55, 0.58, 0.64), 0.6) * (1.0 - uNight * 0.8);
+            // Heavier cover means flatter, greyer cloud.
+            vec3 cloud = mix(mix(shadowed, sunlit, shade), shadowed * 0.9, smoothstep(0.6, 0.95, uCloudCover));
+            cloud += uSunColor * pow(toSun, 6.0) * 0.25 * (1.0 - uNight);
+            // Thin out toward the horizon, where the projection stretches.
+            float fade = smoothstep(0.012, 0.16, direction.y);
+            color = mix(color, cloud, cover * fade);
+          }
+
           gl_FragColor = vec4(color, 1.0);
           #include <colorspace_fragment>
         }`,
@@ -130,7 +190,7 @@ export class Atmosphere {
   }
 
   /** `focus` is where shadows should be centred: the player. `rain` is 0..1. */
-  update(sample: SkySample, focus: Vector3, rain: number): void {
+  update(sample: SkySample, focus: Vector3, rain: number, frameDelta: number): void {
     const { shadowRange, shadowMapSize, fogNear, fogFar } = Config.render;
     const dim = 1 - rain * 0.45;
 
@@ -157,6 +217,11 @@ export class Atmosphere {
     (uniforms.uSunDirection?.value as Vector3).copy(sample.lightDirection);
     (uniforms.uSunColor?.value as Color).copy(sample.lightColor);
     if (uniforms.uSunGlow) uniforms.uSunGlow.value = (1 - rain) * (1 - sample.night * 0.6);
+    if (uniforms.uTime) uniforms.uTime.value += frameDelta;
+    if (uniforms.uNight) uniforms.uNight.value = sample.night;
+    // Fair-weather cloud normally; rain closes the sky in.
+    if (uniforms.uCloudCover)
+      uniforms.uCloudCover.value = CLEAR_CLOUD_COVER + (1 - CLEAR_CLOUD_COVER) * rain;
     this.sky.position.copy(this.camera.position);
 
     // Fog takes the horizon colour, and closes in when it rains.
@@ -167,7 +232,8 @@ export class Atmosphere {
 
     const { land, vehicles } = this.targets;
     land.roughness = 1 - rain * 0.6;
-    vehicles.emissive.copy(HEADLIGHT).multiplyScalar(sample.night * 0.35);
+    // Only the lights glow (see FollowerRenderer); the red channel carries how brightly.
+    vehicles.emissive.setScalar(0.08 + sample.night * 0.92);
     this.targets.setWindowLight(sample.windowLight, sample.night);
   }
 }

@@ -13,6 +13,7 @@ import {
   type Scene,
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { Config } from '../core/Config';
 import type { TreeKind, TreePlacement } from '../world/city/trees';
 
 const UP = new Vector3(0, 1, 0);
@@ -22,24 +23,37 @@ const CONIFER = [0x2c5e3a, 0x25523a, 0x356a40] as const;
 const BARK = 0x5b4636;
 
 /**
- * Trees as instanced meshes: one canopy and one trunk mesh per species, so the
- * whole city's trees are four draw calls. Unit trees are 1 m tall and scaled
+ * Trees as instanced meshes: one canopy and one trunk mesh per species and
+ * level of detail, so the whole city's trees are eight draw calls. The park and
+ * avenue get the full model; the thousands elsewhere a lighter one, of which a
+ * quality preset may draw only a share. Unit trees are 1 m tall and scaled
  * per instance. Canopies are lumpy blobs (or stacked cones) with baked shading
  * and a shader that sways them in the wind and mottles the leaves.
  */
 export class TreeRenderer {
   private readonly wind = { value: 1 };
   private readonly time = { value: 0 };
+  /** The lighter trees, which a quality preset may draw only a share of. */
+  private readonly thinnable: { canopy: InstancedMesh; trunk: InstancedMesh; total: number }[] = [];
+  private density = 1;
 
   constructor(scene: Scene, trees: readonly TreePlacement[]) {
     const canopyMaterial = this.createCanopyMaterial();
     const trunkMaterial = new MeshStandardMaterial({ color: BARK, roughness: 1 });
 
-    for (const kind of ['broadleaf', 'conifer'] as const) {
-      const group = trees.filter((tree) => tree.kind === kind);
+    for (const [kind, detail] of [
+      ['broadleaf', true],
+      ['conifer', true],
+      ['broadleaf', false],
+      ['conifer', false],
+    ] as const) {
+      const group = trees.filter((tree) => tree.kind === kind && tree.detail === detail);
       if (group.length === 0) continue;
-      const canopy = new InstancedMesh(createCanopy(kind), canopyMaterial, group.length);
-      const trunk = new InstancedMesh(createTrunk(kind), trunkMaterial, group.length);
+      // Shuffled by tint so that drawing only a share of them thins every district evenly.
+      if (!detail) group.sort((a, b) => a.tint - b.tint);
+      const canopy = new InstancedMesh(createCanopy(kind, detail), canopyMaterial, group.length);
+      const trunk = new InstancedMesh(createTrunk(kind, detail), trunkMaterial, group.length);
+      if (!detail) this.thinnable.push({ canopy, trunk, total: group.length });
       const matrix = new Matrix4();
       const position = new Vector3();
       const rotation = new Quaternion();
@@ -72,8 +86,19 @@ export class TreeRenderer {
     }
   }
 
+  /** Trees drawn, of all placed. */
+  get drawn(): number {
+    return this.thinnable.reduce((sum, tier) => sum + tier.canopy.count, 0);
+  }
+
   /** `rain` (0..1) strengthens the wind. */
   update(frameDelta: number, rain: number): void {
+    if (this.density !== Config.quality.trees) {
+      this.density = Config.quality.trees;
+      for (const tier of this.thinnable) {
+        tier.canopy.count = tier.trunk.count = Math.round(tier.total * this.density);
+      }
+    }
     this.time.value += frameDelta;
     this.wind.value = 1 + rain * 1.6;
   }
@@ -122,14 +147,14 @@ export class TreeRenderer {
 }
 
 /** A 1 m tall canopy with shading baked into vertex colours: darker underneath, lighter on top. */
-function createCanopy(kind: TreeKind): BufferGeometry {
+function createCanopy(kind: TreeKind, detail: boolean): BufferGeometry {
   const parts: BufferGeometry[] = [];
   if (kind === 'conifer') {
     // Stacked cones, narrowing upward.
-    const tiers = 4;
+    const tiers = detail ? 4 : 3;
     for (let i = 0; i < tiers; i++) {
       const t = i / (tiers - 1);
-      const cone = new ConeGeometry(0.5 * (1 - t * 0.62), 0.34, 9, 1);
+      const cone = new ConeGeometry(0.5 * (1 - t * 0.62), detail ? 0.34 : 0.42, detail ? 9 : 6, 1);
       cone.translate(0, 0.3 + t * 0.52, 0);
       parts.push(cone);
     }
@@ -141,9 +166,12 @@ function createCanopy(kind: TreeKind): BufferGeometry {
       [-0.18, 0.6, -0.12, 0.27],
       [0.02, 0.8, -0.04, 0.24],
     ];
-    blobs.forEach(([x, y, z, radius], index) => {
+    blobs.slice(0, detail ? 4 : 3).forEach(([x, y, z, radius], index) => {
       // The main blob gets the detail; the smaller ones can be coarser.
-      const blob = new IcosahedronGeometry(radius, index === 0 ? 2 : 1);
+      const blob = new IcosahedronGeometry(
+        radius,
+        detail ? (index === 0 ? 2 : 1) : index === 0 ? 1 : 0,
+      );
       const positions = blob.getAttribute('position');
       for (let i = 0; i < positions.count; i++) {
         const px = positions.getX(i);
@@ -174,9 +202,9 @@ function createCanopy(kind: TreeKind): BufferGeometry {
   return merged;
 }
 
-function createTrunk(kind: TreeKind): BufferGeometry {
+function createTrunk(kind: TreeKind, detail: boolean): BufferGeometry {
   const height = kind === 'conifer' ? 0.32 : 0.5;
-  const trunk = new CylinderGeometry(0.022, 0.04, height, 7);
+  const trunk = new CylinderGeometry(0.022, 0.04, height, detail ? 7 : 5);
   trunk.translate(0, height / 2, 0);
   return trunk;
 }

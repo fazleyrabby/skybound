@@ -21,7 +21,7 @@ export function currentHint(context: HintContext): string | null {
   const { player } = context;
   // Combat controls only once airborne: on the ground, learning to take off comes first.
   if (context.hasTarget && player.airborne) {
-    return 'Left mouse: punch   ·   Right mouse: energy blast   ·   Q: lock on';
+    return 'Left mouse: punch   ·   Hold right mouse: heat beam   ·   Q: lock on';
   }
   if (context.atBeacon) return null; // the beacon shows its own prompt
   if (context.missionActive) return null; // the objective text is the instruction

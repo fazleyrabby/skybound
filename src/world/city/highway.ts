@@ -16,7 +16,7 @@ export function buildHighway(out: BuildingDescriptor[]): void {
   const boxes = new BoxBuilder(out, 'highway');
   const radius = Layout.highwayRadius;
   const span = radius * 2 + DECK_WIDTH;
-  const deck = { baseY: DECK_UNDERSIDE } as const;
+  const deck = { baseY: DECK_UNDERSIDE, road: true } as const;
 
   for (const side of [-1, 1]) {
     boxes.add(0, side * radius, span, DECK_WIDTH, DECK_THICKNESS, Palette.highway, deck);

@@ -1,6 +1,7 @@
 import { Config } from '../core/Config';
 import { createRng } from '../utils/rng';
 import type { ChunkManager } from './ChunkManager';
+import { SIDEWALK_TOP } from './city/props';
 import { roadLength, type Road } from './city/roads';
 import { FOLLOWER_STRIDE, PathFollowers, type Path } from './PathFollowers';
 
@@ -18,7 +19,7 @@ const PEDESTRIAN_COLORS = [
 ] as const;
 const VEHICLE_HEIGHT = 0.75;
 const PEDESTRIAN_HEIGHT = 0.85;
-const SIDEWALK_MARGIN = 2.5;
+const SIDEWALK_MARGIN = 1.2;
 /** Vehicles are visible from far off; hide them only well outside live chunks' reach. */
 const VEHICLE_RANGE = 900;
 const PARK_PATHS = 26;
@@ -63,7 +64,10 @@ export class StreetLife {
 
     // Sidewalks run along each street; park paths are short random strolls on the lawns.
     const streets = roads.filter((road) => road.street && roadLength(road) > 0);
-    const walks: Path[] = streets.map((road) => ({ ...road, y: PEDESTRIAN_HEIGHT }));
+    const walks: Path[] = streets.map((road) => ({
+      ...road,
+      y: PEDESTRIAN_HEIGHT + SIDEWALK_TOP,
+    }));
     const sidewalkCount = walks.length;
     const rng = createRng(seed + 202);
     for (let i = 0; i < PARK_PATHS; i++) {

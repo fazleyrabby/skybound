@@ -40,12 +40,20 @@ export interface LoopStats {
   stepCount: number;
   /** Time spent in fixedUpdate during the last frame, in milliseconds. */
   lastSimMs: number;
+  /** The same, per fixed step run in that frame: what one step costs. 0 if none ran. */
+  lastStepMs: number;
   /** Real delta of the last frame, in milliseconds. */
   lastFrameMs: number;
 }
 
 export class GameLoop {
-  readonly stats: LoopStats = { frameCount: 0, stepCount: 0, lastSimMs: 0, lastFrameMs: 0 };
+  readonly stats: LoopStats = {
+    frameCount: 0,
+    stepCount: 0,
+    lastSimMs: 0,
+    lastStepMs: 0,
+    lastFrameMs: 0,
+  };
 
   private readonly stepper: FixedStepper;
   private rafId = 0;
@@ -96,9 +104,12 @@ export class GameLoop {
     this.lastTime = now;
 
     const simStart = performance.now();
+    const stepsBefore = this.stats.stepCount;
     // Paused: render the latest state as-is rather than replaying the last step.
     const alpha = this.isPaused ? 1 : this.stepper.advance(frameDelta, this.onStep);
     this.stats.lastSimMs = performance.now() - simStart;
+    const steps = this.stats.stepCount - stepsBefore;
+    this.stats.lastStepMs = steps > 0 ? this.stats.lastSimMs / steps : 0;
     this.stats.lastFrameMs = frameDelta * 1000;
     this.stats.frameCount++;
 

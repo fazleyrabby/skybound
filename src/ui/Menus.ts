@@ -12,13 +12,13 @@ const CONTROLS: ReadonlyArray<readonly [string, string]> = [
   ['C', 'descend / land'],
   ['Shift', 'boost'],
   ['Left mouse', 'punch, hold then release for heavy punch'],
-  ['Right mouse', 'energy blast'],
+  ['Right mouse (hold)', 'heat beam; let it cool when it overheats'],
   ['F', 'dash attack at the target'],
   ['Q', 'lock / unlock target'],
   ['E', 'start the mission at a beacon'],
   ['X', 'abandon mission'],
   ['Esc', 'pause'],
-  ['Gamepad', 'sticks, RT / LT throttle, A / B up / down, LB boost, X punch, Y blast, RB dash'],
+  ['Gamepad', 'sticks, RT / LT throttle, A / B up / down, LB boost, X punch, Y heat beam, RB dash'],
 ];
 
 const SLIDERS: ReadonlyArray<readonly [keyof typeof SETTING_RANGES, string, number]> = [
@@ -35,6 +35,7 @@ const TOGGLES: ReadonlyArray<readonly [keyof Settings, string]> = [
   ['speedEffects', 'Speed lines'],
   ['reduceFlashes', 'Reduce flashes'],
   ['showHints', 'Control hints'],
+  ['autoLock', 'Lock on by aiming at a target'],
 ];
 const QUALITY = ['auto', 'MOBILE', 'LOW', 'MEDIUM', 'HIGH', 'ULTRA'] as const;
 

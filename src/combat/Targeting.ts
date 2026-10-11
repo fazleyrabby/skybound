@@ -39,13 +39,20 @@ export function scoreTarget(
 /**
  * Soft lock-on. Without a lock, `current` is whatever scores best right now
  * (used for melee assist and blast aim assist). The lock key pins the current
- * target; it releases when pressed again, or when the target dies, leaves
- * range, or stays out of view too long. It never constrains movement.
+ * target, and so does resting the crosshair on one for a moment (hover lock,
+ * optional). The lock releases when the key is pressed again, or when the
+ * target dies, leaves range, or stays out of view too long. It never
+ * constrains movement.
  */
 export class Targeting {
   current: Damageable | null = null;
   locked = false;
   private outOfView = 0;
+  /** Seconds the crosshair has rested on `hovered`. */
+  private hover = 0;
+  private hovered: Damageable | null = null;
+  /** Target the player just unlocked by hand. */
+  private released: Damageable | null = null;
 
   update(
     dt: number,
@@ -64,6 +71,7 @@ export class Targeting {
         !target.alive ||
         origin.distanceTo(target.position) > cfg.targetRange * 1.2 ||
         this.outOfView > cfg.lockDropTime;
+      if (togglePressed) this.released = target;
       if (lost || togglePressed) this.release();
       else return;
       if (togglePressed) return; // releasing does not immediately re-pin
@@ -79,6 +87,23 @@ export class Targeting {
       }
     }
     this.current = best;
+
+    // Hover lock: rest the crosshair on a target for a moment and it locks.
+    if (best && cfg.autoLock > 0 && this.isUnderCrosshair(origin, forward, best)) {
+      // After a manual release, the same target does not re-lock until the crosshair leaves it.
+      if (best !== this.released) this.hover = best === this.hovered ? this.hover + dt : dt;
+      this.hovered = best;
+      if (this.hover >= cfg.autoLockTime) {
+        this.locked = true;
+        this.outOfView = 0;
+        this.hover = 0;
+        return;
+      }
+    } else {
+      this.hover = 0;
+      this.hovered = null;
+      this.released = null;
+    }
     if (togglePressed && best) {
       this.locked = true;
       this.outOfView = 0;
@@ -88,5 +113,12 @@ export class Targeting {
   release(): void {
     this.locked = false;
     this.outOfView = 0;
+  }
+
+  /** Whether the aim line passes through the target, with a small margin. */
+  private isUnderCrosshair(origin: Vector3, forward: Vector3, target: Damageable): boolean {
+    const distance = origin.distanceTo(target.position);
+    const outline = Math.atan2(target.radius, Math.max(distance, 1e-3));
+    return angleTo(origin, forward, target) <= outline + Config.combat.autoLockMargin;
   }
 }

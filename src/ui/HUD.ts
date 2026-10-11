@@ -17,6 +17,7 @@ interface Bar {
 export class HUD {
   private readonly health: Bar;
   private readonly energy: Bar;
+  private readonly heat: Bar;
   private readonly dash: Bar;
   private readonly speed: HTMLDivElement;
   private sinceRefresh = REFRESH_INTERVAL;
@@ -43,7 +44,11 @@ export class HUD {
     this.dash = createBar('dash', '#ffc24d');
     this.dash.root.style.width = '90px';
     this.dash.root.style.height = '6px';
-    root.append(this.health.root, this.energy.root, this.dash.root);
+    // Heat beam: fills as it heats, turns red and flashes while it is cut out.
+    this.heat = createBar('heat', '#ff9a3d');
+    this.heat.root.style.width = '130px';
+    this.heat.root.style.height = '6px';
+    root.append(this.health.root, this.energy.root, this.heat.root, this.dash.root);
 
     this.speed = document.createElement('div');
     this.speed.id = 'hud-speed';
@@ -66,6 +71,9 @@ export class HUD {
     this.sinceRefresh = 0;
     setBar(this.health, this.player.health / Config.vitals.maxHealth);
     setBar(this.energy, this.player.energy / Config.vitals.maxEnergy);
+    setBar(this.heat, this.player.beamHeat);
+    this.heat.fill.style.background = this.player.beamOverheated ? '#ff3b2f' : '#ff9a3d';
+    this.heat.root.dataset.state = this.player.beamOverheated ? 'overheated' : 'ready';
     // Fills as the dash attack comes back; hidden when it is ready.
     setBar(this.dash, 1 - this.combat.dashCooldownFraction);
     this.speed.textContent = `${Math.round(toDisplaySpeed(this.player.speed))} km/h`;

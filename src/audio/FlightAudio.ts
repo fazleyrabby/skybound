@@ -30,8 +30,8 @@ export function closeness(distances: readonly number[], range: number): number {
 /**
  * The continuous layers that react to flight (spec section 40): wind that
  * rises and brightens with speed, a low rumble at boost speeds, a whoosh when
- * passing close to buildings or the ground at speed, and the hum of the city
- * near street level.
+ * passing close to buildings or the ground at speed, the hum of the city near
+ * street level, and the roar of the heat beam while it burns.
  */
 export class FlightAudio {
   private windFilter: BiquadFilterNode | undefined;
@@ -40,6 +40,9 @@ export class FlightAudio {
   private whooshGain: GainNode | undefined;
   private cityGain: GainNode | undefined;
   private rainGain: GainNode | undefined;
+  private beamGain: GainNode | undefined;
+  private beamFilter: BiquadFilterNode | undefined;
+  private sizzleGain: GainNode | undefined;
   private built = false;
   private sinceProbe = 0;
   private near = 0;
@@ -93,6 +96,12 @@ export class FlightAudio {
     const inTown = 1 - smoothstep(500, 900, Math.hypot(player.position.x, player.position.z));
     this.cityGain?.gain.setTargetAtTime(cfg.cityVolume * low * inTown, now, 0.5);
     this.rainGain?.gain.setTargetAtTime(cfg.rainVolume * this.rain(), now, 0.4);
+
+    // Heat beam: a roar that rises in pitch as it heats, with a sizzle on top.
+    const beam = player.beamActive ? cfg.beamVolume : 0;
+    this.beamGain?.gain.setTargetAtTime(beam, now, 0.03);
+    this.beamFilter?.frequency.setTargetAtTime(420 + 900 * player.beamHeat, now, 0.08);
+    this.sizzleGain?.gain.setTargetAtTime(beam * (0.35 + 0.5 * player.beamHeat), now, 0.03);
   }
 
   /** Looks left, right and down for something close. */
@@ -137,6 +146,10 @@ export class FlightAudio {
     this.whooshGain = layer('bandpass', 950, 1.6).gain;
     this.cityGain = layer('lowpass', 260, 0.5).gain;
     this.rainGain = layer('highpass', 2600, 0.4).gain;
+    const beam = layer('bandpass', 420, 2.2);
+    this.beamFilter = beam.filter;
+    this.beamGain = beam.gain;
+    this.sizzleGain = layer('highpass', 5200, 0.6).gain;
     source.start();
   }
 }

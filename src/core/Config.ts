@@ -57,6 +57,8 @@ export const Config = {
     skin: 0.05,
     maxSlope: 40 * DEG,
     snapToGround: 0.3,
+    /** Tallest ledge walked up without jumping: kerbs, not walls. */
+    stepHeight: 0.25,
     /** Falling below this height respawns the player. */
     killPlaneY: -50,
   },
@@ -80,24 +82,55 @@ export const Config = {
     orientationResponse: 10,
     /** Release the visual crouch offset smoothly when leaving a surface. */
     groundReleaseResponse: 14,
+    /**
+     * How fast the body may settle toward the ground, m/s: slowly through a stride, so it
+     * glides, and quickly otherwise. It rises at once, so feet never sink in.
+     */
+    strideSinkRate: 0.15,
+    groundSinkRate: 3,
     minLeanSpeed: 1,
-    stridePerMetre: 2.6,
+    /** Stride rate in radians per second (2π is two steps), from a slow walk up to a sprint. */
+    cadenceSlow: 5,
+    cadenceFast: 14,
+    /** Ground speed at which the stride is fully formed, and at which walking starts to become running. */
+    strideFullSpeed: 1.6,
+    runFromSpeed: 2.5,
     walkMinSpeed: 0.6,
     verticalPoseSpeed: 4,
     verticalPoseMaxCruise: 12,
     punchHold: 0.24,
-    blastHold: 0.2,
+    /** How long the stance is held after the beam goes out. */
+    blastHold: 0.12,
     landingHold: 0.55,
     damageHold: 0.22,
     chargeShownAbove: 0.35,
+    cape: {
+      columns: 9,
+      rows: 12,
+      topWidth: 0.3,
+      bottomWidth: 0.86,
+      length: 1.22,
+      gravity: 11,
+      /** Velocity kept per second of simulation: lower is heavier cloth. */
+      damping: 0.9,
+      /** Push away from the hero's back, m/s². Keeps the cape off the body at rest. */
+      backPush: 3.5,
+      /** Air resistance, per m/s of speed through the air. This is what makes the cape stream. */
+      airDrag: 0.024,
+      /** Sideways flutter per m/s of airspeed. */
+      flutter: 0.11,
+      iterations: 5,
+    },
     /** Body roll into an actual travel turn; looking around alone never banks it. */
     bankPerTurnRate: 0.16,
     bankMax: 25 * DEG,
     bankResponse: 6,
     poseResponse: {
       idle: 10,
-      walkA: 14,
-      walkB: 14,
+      walkA: 30,
+      walkB: 30,
+      runA: 30,
+      runB: 30,
       jump: 12,
       fall: 8,
       land: 22,
@@ -220,6 +253,8 @@ export const Config = {
     damageFlashTime: 0.35,
     /** 1 normally; 0 with the reduce-flashes setting. Scales bright full-screen and burst flashes. */
     flashScale: 1,
+    /** Brightness of the light the heat beam casts where it lands. */
+    beamLight: 60,
   },
   audio: {
     masterVolume: 0.6,
@@ -242,6 +277,7 @@ export const Config = {
     cityVolume: 0.12,
     cityMaxAltitude: 160,
     rainVolume: 0.3,
+    beamVolume: 0.3,
     /** How quickly the continuous layers follow speed changes. */
     response: 6,
     /** Beats per minute while exploring or fighting, and in the boss fight. */
@@ -260,6 +296,12 @@ export const Config = {
     targetCone: 35 * DEG,
     /** Seconds a locked target may stay outside the cone before the lock drops. */
     lockDropTime: 1.5,
+    /** 1: resting the crosshair on a target locks onto it. Set from the player's settings. */
+    autoLock: 1,
+    /** Seconds the crosshair must stay on a target before it locks. */
+    autoLockTime: 0.4,
+    /** Extra angle around a target's outline that still counts as on it, radians. */
+    autoLockMargin: 1.2 * DEG,
     weightAngle: 0.45,
     weightDistance: 0.25,
     weightThreat: 0.15,
@@ -268,15 +310,12 @@ export const Config = {
     punchDamage: 25,
     heavyDamage: 60,
     dashDamage: 45,
-    blastDamage: 30,
     punchCooldown: 0.3,
     /** A press made too early (cooldown, hit-stop, mid-lunge) still counts for this long. */
     inputBuffer: 0.3,
     /** Hold punch this long, then release, for a heavy punch. */
     heavyChargeTime: 0.45,
     dashCooldown: 3,
-    blastCooldown: 0.22,
-    blastCost: 18,
 
     /** Melee assist (spec section 13): a punch lunges at a target inside this range and cone. */
     assistBaseRange: 10,
@@ -309,12 +348,22 @@ export const Config = {
     dashMaxTime: 0.8,
     dashExitSpeed: 60,
 
-    blastSpeed: 320,
-    blastLife: 1.6,
-    blastAssistCone: 9 * DEG,
-    blastRadius: 0.6,
-    blastKnockback: 6,
-    maxProjectiles: 32,
+    /** Heat beam: held to fire, hitscan, burns for as long as it stays on something. */
+    beamDamagePerSecond: 85,
+    beamRange: 450,
+    /** Added to a target's radius: the beam is forgiving, not a needle. */
+    beamRadius: 0.7,
+    /** The beam bends onto the current target if it is this close to the crosshair. */
+    beamAssistCone: 7 * DEG,
+    beamKnockback: 1.2,
+    /** Seconds between damage ticks and impact effects. */
+    beamTick: 0.1,
+    /** Seconds of continuous fire before it cuts out, and seconds to cool from full heat. */
+    beamOverheatTime: 3.2,
+    beamCoolTime: 2.4,
+    /** After overheating it will not fire again until heat is back down to this. */
+    beamResumeHeat: 0.3,
+    beamEnergyPerSecond: 22,
   },
   vitals: {
     maxHealth: 100,
@@ -527,6 +576,8 @@ export const Config = {
   },
   /** Density multipliers set by the quality preset (spec section 37). 1 is full. */
   quality: {
+    /** Share of the city's lighter trees drawn. */
+    trees: 1,
     vehicles: 1,
     pedestrians: 1,
     rain: 1,

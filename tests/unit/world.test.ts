@@ -62,7 +62,8 @@ describe('ChunkManager (spec section 34)', () => {
 
 describe('roads', () => {
   const city = generateCity(1337);
-  const solid = city.buildings.filter((b) => b.solid);
+  // Pavements are solid but only a kerb high; they do not block a street.
+  const solid = city.buildings.filter((b) => b.solid && b.y + b.hy > 0.5);
 
   it('ground streets run through gaps, not through buildings', () => {
     for (const road of city.roads.filter((r) => r.street)) {
@@ -97,10 +98,40 @@ describe('roads', () => {
     }
   });
 
-  it('street dressing adds no colliders', () => {
+  it('street dressing adds no colliders except kerb-high pavements', () => {
     const dressing = city.buildings.filter((b) => b.district === 'street');
-    expect(dressing.length).toBeGreaterThan(100);
-    expect(dressing.every((b) => !b.solid)).toBe(true);
+    expect(dressing.length).toBeGreaterThan(300);
+    const colliders = dressing.filter((b) => b.solid);
+    expect(colliders.length).toBeGreaterThan(40);
+    for (const pavement of colliders)
+      expect(pavement.y + pavement.hy).toBeLessThan(Config.player.stepHeight);
+  });
+
+  it('pavements line the streets and stop at every junction', () => {
+    const pavements = city.buildings.filter((b) => b.district === 'street' && b.solid);
+    const asphalt = city.buildings.filter((b) => b.district === 'street' && b.road);
+    expect(asphalt.length).toBe(city.roads.filter((r) => r.street).length);
+    for (const pavement of pavements) {
+      const onRoad = asphalt.find(
+        (road) =>
+          Math.abs(pavement.x - road.x) < pavement.hx + road.hx - 0.01 &&
+          Math.abs(pavement.z - road.z) < pavement.hz + road.hz - 0.01,
+      );
+      expect(onRoad).toBeUndefined();
+    }
+  });
+
+  it('roads that cross are at different heights, so their markings cannot flicker', () => {
+    const roads = city.buildings.filter((b) => b.road && b.y < 2);
+    expect(roads.length).toBeGreaterThan(30);
+    for (const a of roads) {
+      for (const b of roads) {
+        if (a === b) continue;
+        const overlap =
+          Math.abs(a.x - b.x) < a.hx + b.hx - 0.01 && Math.abs(a.z - b.z) < a.hz + b.hz - 0.01;
+        if (overlap) expect(Math.abs(a.y + a.hy - (b.y + b.hy))).toBeGreaterThan(0.009);
+      }
+    }
   });
 });
 

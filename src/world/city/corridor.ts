@@ -1,5 +1,6 @@
 import type { Rng } from '../../utils/rng';
 import { BoxBuilder, shade, type BuildingDescriptor } from '../Building';
+import { addRoofPlant } from './downtown';
 import { Layout, Palette } from './layout';
 
 /** Lines the downtown streets leave on, as [position, half clearance]. The avenue is wider. */
@@ -54,9 +55,25 @@ export function buildCorridor(out: BuildingDescriptor[], rng: Rng): void {
           band === OUTER &&
           along + width / 2 > FLIGHT_GAP.minX &&
           along - width / 2 < FLIGHT_GAP.maxX;
-        if (!southOpen) boxes.add(along, side * band, width, DEPTH, height, color, options);
+        if (!southOpen) {
+          addRoofPlant(
+            boxes,
+            rng,
+            boxes.add(along, side * band, width, DEPTH, height, color, options),
+            false,
+          );
+        }
         // ... and the east and west sides (running north-south).
-        boxes.add(side * band, along, DEPTH, width, height * rng.range(0.7, 1.2), color, options);
+        const block = boxes.add(
+          side * band,
+          along,
+          DEPTH,
+          width,
+          height * rng.range(0.7, 1.2),
+          color,
+          options,
+        );
+        addRoofPlant(boxes, rng, block, false);
       }
     }
   }

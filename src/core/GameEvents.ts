@@ -20,8 +20,13 @@ export interface GameEvents {
   };
   /** A melee attack hit nothing. */
   'combat:whiff': { kind: AttackKind };
+  /** The heat beam lit. */
   'combat:blastFired': Record<string, never>;
-  /** A blast hit the world rather than a target. */
+  /** The heat beam went out: released, out of energy, or cut out by overheating. */
+  'combat:beamStopped': { overheated: boolean };
+  /** The beam has cooled enough after overheating to fire again. */
+  'combat:beamReady': Record<string, never>;
+  /** The beam is burning the world rather than a target; repeats while it does. */
   'combat:blastImpact': { x: number; y: number; z: number };
   /** A world event (drone attack, ...) began at a site. */
   'world:eventStarted': {

@@ -1,13 +1,12 @@
 import { Vector3 } from 'three';
 import type { AttackKind, Damageable } from '../combat/Damageable';
-import type { Projectiles } from '../combat/Projectiles';
+import { HeatBeam, type WorldRaycaster } from '../combat/HeatBeam';
 import { angleTo, Targeting } from '../combat/Targeting';
 import { Config } from '../core/Config';
 import type { EventBus } from '../core/EventBus';
 import type { GameEvents } from '../core/GameEvents';
 import { clamp } from '../utils/math';
 import { aimForward, type PlayerInput, type PlayerState } from './PlayerState';
-import { spendEnergy } from './PlayerVitals';
 
 type MeleeKind = Exclude<AttackKind, 'blast'>;
 
@@ -24,12 +23,11 @@ const forward = new Vector3();
 const attackDirection = new Vector3();
 const toTarget = new Vector3();
 const scratch = new Vector3();
-const MUZZLE_HEIGHT = 0.4;
 const MIN_TRAVEL_SPEED = 10;
 
 /**
  * The player's attacks (spec section 13): punch, heavy punch, dash attack and
- * energy blast, built on soft lock-on targeting.
+ * heat beam, built on soft lock-on targeting.
  *
  * Melee uses an assist lunge. Fist-on-drone contact at flight speed is not
  * achievable by raw hit detection, so a punch near a target takes over the
@@ -38,11 +36,11 @@ const MIN_TRAVEL_SPEED = 10;
  */
 export class CombatController {
   readonly targeting = new Targeting();
+  readonly beam: HeatBeam;
 
   private lunge: Lunge | null = null;
   private punchCooldown = 0;
   private dashCooldown = 0;
-  private blastCooldown = 0;
   private chargeTime = 0;
   private hitStop = 0;
   /** Seconds a recent press stays valid, so one made slightly early is not lost. */
@@ -52,9 +50,11 @@ export class CombatController {
   constructor(
     private readonly player: PlayerState,
     private readonly targets: () => readonly Damageable[],
-    private readonly projectiles: Projectiles,
+    world: WorldRaycaster,
     private readonly events: EventBus<GameEvents>,
-  ) {}
+  ) {
+    this.beam = new HeatBeam(world, events);
+  }
 
   /** 0..1 until the dash attack is ready again. */
   get dashCooldownFraction(): number {
@@ -78,7 +78,6 @@ export class CombatController {
     const player = this.player;
     this.punchCooldown -= dt;
     this.dashCooldown -= dt;
-    this.blastCooldown -= dt;
 
     aimForward(player.aim, forward);
     const targets = this.targets();
@@ -110,10 +109,18 @@ export class CombatController {
     }
     player.punchCharge = clamp(this.chargeTime / cfg.heavyChargeTime, 0, 1);
 
-    if (input.blast && this.blastCooldown <= 0 && spendEnergy(player, cfg.blastCost)) {
-      this.blastCooldown = cfg.blastCooldown;
-      this.fireBlast();
-    }
+    // The beam cannot be held through a lunge: the hero is busy throwing a punch.
+    this.beam.fixedUpdate(
+      dt,
+      input.blast && !this.lunge,
+      player,
+      forward,
+      this.targeting.current,
+      targets,
+    );
+    player.beamActive = this.beam.active;
+    player.beamHeat = this.beam.heat;
+    player.beamOverheated = this.beam.overheated;
   }
 
   private bufferPresses(input: PlayerInput): void {
@@ -260,30 +267,5 @@ export class CombatController {
       y: target.position.y,
       z: target.position.z,
     });
-  }
-
-  private fireBlast(): void {
-    const cfg = Config.combat;
-    const player = this.player;
-    const origin = scratch.copy(player.position);
-    origin.y += MUZZLE_HEIGHT;
-
-    // Aim assist: if the current target is close to the crosshair, lead it.
-    attackDirection.copy(forward);
-    const target = this.targeting.current;
-    if (target && angleTo(origin, forward, target) <= cfg.blastAssistCone) {
-      const flightTime = origin.distanceTo(target.position) / cfg.blastSpeed;
-      attackDirection
-        .copy(target.position)
-        .addScaledVector(target.velocity, flightTime)
-        .sub(origin)
-        .normalize();
-    }
-
-    toTarget.copy(attackDirection).multiplyScalar(cfg.blastSpeed);
-    // Carry the hero's forward speed so a blast never trails behind at boost.
-    const carried = Math.max(0, player.velocity.dot(attackDirection));
-    toTarget.addScaledVector(attackDirection, carried);
-    if (this.projectiles.fire(origin, toTarget)) this.events.emit('combat:blastFired', {});
   }
 }

@@ -28,7 +28,10 @@ Gameplay state changes only in the fixed step. Anything simulated keeps a previo
 | `player/PlayerController.ts`        | State machine. Picks the model, moves through the `CollisionMover`, applies collision response and transitions, emits events. |
 | `player/Player.ts`                  | Owns state and controller; look input; respawn.                                                                               |
 | `player/PlayerView.ts`              | Draws the Aether model (capsule fallback if it fails to load), leans it into flight, picks the pose. Reads state only.        |
-| `player/HeroRig.ts`, `heroPoses.ts` | Rotates the model's joint nodes toward named poses, eased per joint. Poses are data: one Euler rotation per joint.            |
+| `player/HeroRig.ts`, `heroPoses.ts` | Poses the skeleton: named poses eased per bone, each rotation converted through the bone's rest orientation.                  |
+| `player/gait.ts`                    | Pure functions: the walk/run cycle for any phase and pace, and breathing and weight shift for a body at rest.                 |
+| `player/GroundContacts.ts`          | Lowest of the heels, toes, knees and fists of the posed body, so the view can stand it on the surface.                        |
+| `player/Cape.ts`, `ClothStrip.ts`   | The cape: a pinned Verlet cloth in world space, with air drag and capsule colliders for the back and legs.                    |
 
 Flight velocity is two channels. `cruise` is forward flight: its direction rotates toward the aim at a speed-dependent turn rate and its magnitude is damped separately, so turns keep speed. `nudge` is strafe, direct vertical and reverse, damped fast, so hovering is precise. `velocity = cruise + nudge`.
 
@@ -36,15 +39,17 @@ Aim versus heading: the mouse (or right stick) changes `aim`, which the camera o
 
 ### Hero model
 
-`public/assets/characters/aether.glb` is 14 rigid segments on a node hierarchy (torso, head, and three joints per limb), not a skinned mesh. It is built by `blender/characters/build_aether.py` and exported by `export_aether.py`; both run inside Blender. Animation is blended poses in code rather than authored clips: idle, two walk extremes, fall, land, hover, fly, boost, dive, charge, punch, blast. `rendering/AssetManager.ts` loads it through `assetManifest.ts`; a failed load falls back to the capsule.
+`public/assets/characters/aether.glb` is one skinned mesh on a 17-bone armature: pelvis (`torso`, the root), spine, chest, neck, head, three bones per arm from the chest and three per leg from the pelvis. About 23,000 triangles, 10 materials, no textures.
 
-`HeroRig.setWalk()` blends continuously between the two stride extremes, driven by distance travelled and scaled down for small movement inputs. Upward jumps have their own pose; damage briefly interrupts movement. `PlayerView` banks the body from changes in travel heading, wraps heading differences across ±π, and keeps Space/C-only movement upright. A landing hold ends when walking or jumping resumes.
+It is generated, not sculpted. `blender/characters/build_aether.py` lofts the body from rings (width, front and back depth, squareness) and pushes muscles out of the surface as bumps. `export_aether.py` then welds the body parts into a single watertight surface with a voxel remesh, smooths and thins it, cuts clean edges where gloves, boots and collar begin, computes skin weights from where each vertex sits along its limb (no weight painting), bakes crease shading into vertex colours, and exports. Hands, hair, face features and what is worn on the suit stay separate pieces bound to one bone. Both scripts run inside Blender. `rendering/AssetManager.ts` loads the GLB through `assetManifest.ts`; a failed load falls back to the capsule.
 
-An appearance group sits under the interpolated player root. On the ground, cached mesh bounds align its lowest posed point to the capsule's foot height; the offset eases away after take-off. This is presentation only: it changes neither the collision capsule nor the camera pivot, and is approximate contact rather than foot IK. Rates, thresholds and hold times live in `Config.hero`; its numeric controls are available in the tuning panel.
+Poses are data: one Euler rotation per bone in the model's own frame (`heroPoses.ts`). `HeroRig` converts each through the bone's rest orientation (`local = parentRest⁻¹ · pose · boneRest`), so the tables do not depend on how the bones were drawn, and shares a head rotation with the neck. Standing, flying and fighting are named poses eased per bone. Walking and running are not poses: `gait.ts` generates the whole body for any stride phase and pace (knee folding in the swing and giving under load, opposite arm, pelvis turn and drop, shoulders counter-turning, head held on the direction of travel), driven by a cadence that rises with ground speed. At rest the body breathes and shifts its weight.
+
+`PlayerView` banks the body from changes in travel heading, keeps Space/C-only movement upright, and holds the beam stance while the heat beam burns. On the ground it stands the posed body on the surface using `GroundContacts`: it rises at once so nothing sinks in, and settles slowly through a stride so the body glides rather than bouncing. This is presentation only: it changes neither the collision capsule nor the camera pivot. The cape hangs from the chest bone and is simulated in world space, so it trails in flight without being told to. Rates and thresholds live in `Config.hero`.
 
 ## Collision
 
-`physics/PhysicsWorld.ts` is the only module that imports Rapier. The player is a kinematic capsule moved by Rapier's `KinematicCharacterController`, which sweeps and slides, so nothing tunnels at any speed. `PlayerController` then removes the into-surface velocity, applies a scrape loss scaled by how head-on the hit was, and bounces with a short stagger on fast head-on hits (spec section 66). Gameplay depends on the `CollisionMover` interface, so unit tests use a fake floor and a separate suite runs against real Rapier in Node.
+`physics/PhysicsWorld.ts` is the only module that imports Rapier. The player is a kinematic capsule moved by Rapier's `KinematicCharacterController`, which sweeps and slides, so nothing tunnels at any speed. It steps up onto ledges below `Config.player.stepHeight` (kerbs). The ground is an infinite plane; standing height comes from a shape cast (`groundOffset`), not from pressing down. `PlayerController` then removes the into-surface velocity, applies a scrape loss scaled by how head-on the hit was, and bounces with a short stagger on fast head-on hits (spec section 66). Gameplay depends on the `CollisionMover` interface, so unit tests use a fake floor and a separate suite runs against real Rapier in Node.
 
 ## World
 
@@ -60,31 +65,33 @@ Each district is its own file under `world/city/` with its own random stream, so
 | harbor      | container yard, piers, ships, ocean bridge                                     | under the bridge deck                                       |
 | park        | lawn, non-solid trees, obelisk, arch                                           | through the arch                                            |
 | highway     | elevated ring at radius 250 m                                                  | under the deck between pillars                              |
-| surround    | sparse low blocks out to 3 km, three distant tower clusters                    | —                                                           |
+| surround    | towers and mid-rise blocks on a street grid past the core, thinning to suburbs | —                                                           |
 
-Land and ocean share one flat collider at y = 0; the ocean lies south and east of `Layout.shore`.
+Land and ocean share one flat plane collider at y = 0; the ocean lies south and east of `Layout.shore`.
 
 ### Building look
 
-`rendering/BuildingRenderer.ts` patches the standard material: boxes whose descriptor has `windows: true` get a procedural window facade computed from the box's own size, so no UVs or textures are needed. Downtown towers are built in `world/city/downtown.ts` as podium, stepped tiers and non-solid rooftop plant.
+`rendering/BuildingRenderer.ts` draws every box in one instanced mesh and patches the standard material. Boxes flagged `windows` get a procedural facade computed from the box's own size, in metres, with no UVs or textures: one of four kinds of glazing chosen from the building's colour (so every tier of a tower matches), corner piers, shopfronts under an awning or fascia, a cornice, glass that mirrors the sky at grazing angles, a share of windows lit warm or cold at night, and a gravel roof inside a parapet. Boxes flagged `road` get edge lines and centre or lane markings by width. Every edge is antialiased with `fwidth` and each pattern fades to its average before it is smaller than a pixel; that is what keeps the city from shimmering.
+
+Towers (`world/city/downtown.ts`: podium, stepped tiers, rooftop plant, water tanks, crowns and spires on the tallest) are reused uptown and in the surrounding grid. `rendering/Environment.ts` shades the land plane by position: paving through the built-up area, grass, scrub and earth beyond, sand at the shore.
 
 ### Sky, light and weather
 
 - `world/DayNightSystem.ts` — the clock, and `sampleSky(hour)`: a pure function from time of day to light direction, colours, intensities, sky colours, a `night` factor and the share of windows lit. Keyframes for dawn, day, sunset and night, interpolated; continuous across midnight.
 - `world/WeatherSystem.ts` — clear or rain on a seeded timer; `rain` eases 0..1.
-- `rendering/Atmosphere.ts` — applies both: gradient sky dome with sun glow, hemisphere and directional light, one shadow map centred on the player and snapped to texels, fog that takes the horizon colour and closes in with rain, wet ground, night headlights, and the lit-window and night uniforms of the building shader.
+- `rendering/Atmosphere.ts` — applies both: gradient sky dome with sun, moon, stars and drifting clouds that thicken with rain, hemisphere and directional light, one shadow map centred on the player and snapped to texels, fog that takes the horizon colour and closes in with rain, wet ground, night headlights, and the lit-window and night uniforms of the building shader.
 - `rendering/Water.ts` — the ocean shader: sine-wave normals with per-wave anti-aliasing, Fresnel sky reflection, sun glint, shore foam. Fed the same sky sample as the atmosphere.
-- `rendering/TreeRenderer.ts` — instanced canopies and trunks for two species, with wind sway. Placements come from `world/city/trees.ts`.
+- `rendering/TreeRenderer.ts` — instanced canopies and trunks for two species at two levels of detail, with wind sway. Placements come from `world/city/trees.ts`: park woodland, a row down every street, yards, suburbs and farmland copses. A quality preset draws only a share of the lighter trees.
 - `vfx/Rain.ts` — streaks in a box that travels with the camera, moved by fall speed minus the hero's velocity.
 - Boxes flagged `glow` (lamp heads, billboards) light up in their own colour at night, in the same building shader.
 
 ### Street life
 
-- `world/city/roads.ts` — fixed list of straight roads: the downtown street grid, the elevated ring, the ocean bridge. `world/city/props.ts` lays asphalt strips and lamp posts along the streets as non-solid boxes in the shared building mesh.
+- `world/city/roads.ts` — fixed list of straight roads: the downtown street grid, the elevated ring, the ocean bridge. `world/city/props.ts` lays asphalt, kerb-high solid pavements broken at each junction, lamp posts and traffic signals along the streets, as boxes in the shared building mesh. Roads that cross sit at slightly different heights so their paint cannot z-fight.
 - `world/ChunkManager.ts` — 5 × 5 grid of 200 m chunks over the core. A chunk is live when near the player or near where the player will be in 1.5 s; switches are limited to two per update. For now "live" gates pedestrians; geometry stays loaded.
 - `world/PathFollowers.ts` — things that travel along paths and wrap: typed arrays, no allocation, position a pure function of distance travelled. Writes a packed instance buffer.
 - `world/StreetLife.ts` — 150 vehicles on the roads, 320 pedestrians on sidewalks and park paths. Pedestrians are drawn only in live chunks, within 260 m and below 140 m altitude.
-- `rendering/FollowerRenderer.ts` — one instanced mesh per kind.
+- `rendering/FollowerRenderer.ts` — one instanced mesh per kind, modelled from primitives: a saloon car with glass, wheels and lights that glow at night; a person whose limbs swing in the vertex shader. A per-vertex flag says which parts take the instance colour.
 
 ### Events
 
@@ -108,15 +115,17 @@ Land and ocean share one flat collider at y = 0; the ocean lies south and east o
 
 ## Combat
 
-| File                         | Role                                                                                        |
-| ---------------------------- | ------------------------------------------------------------------------------------------- |
-| `combat/Damageable.ts`       | Interface for anything that can be targeted and hit. Enemies and the boss implement it.     |
-| `combat/Targeting.ts`        | Soft lock-on: the scoring formula from spec section 14, stickiness, lock and drop rules.    |
-| `combat/Projectiles.ts`      | Pooled energy blasts, swept each step against targets (segment-sphere) and the world (ray). |
-| `player/CombatController.ts` | Punch, heavy punch, dash attack, blast; input buffering; hit-stop.                          |
-| `player/PlayerVitals.ts`     | Health and energy rules, damage, knock-out.                                                 |
+| File                         | Role                                                                                          |
+| ---------------------------- | --------------------------------------------------------------------------------------------- |
+| `combat/Damageable.ts`       | Interface for anything that can be targeted and hit. Enemies and the boss implement it.       |
+| `combat/Targeting.ts`        | Soft lock-on: the scoring formula from spec section 14, stickiness, lock and drop rules.      |
+| `combat/HeatBeam.ts`         | The held heat beam: hitscan against targets and the world, damage in ticks, heat and cut-out. |
+| `player/CombatController.ts` | Punch, heavy punch, dash attack, heat beam; input buffering; hit-stop.                        |
+| `player/PlayerVitals.ts`     | Health and energy rules, damage, knock-out.                                                   |
 
 Melee is built on an assist lunge. A punch near a target sets `PlayerState.lungeVelocity` / `lungeTime`; while that is active `PlayerController` flies the hero along it instead of running normal flight. The lunge homes each step, adds the target's velocity so it cannot be outrun, and counts contact as soon as one step's closing distance would reach the target, so it cannot overshoot. On exit the hero gets back most of the speed they came in with. A unit test runs 60 randomised approaches at 40–160 m/s against an orbiting drone and requires every one to land.
+
+The heat beam is held, not fired. Each step it casts a ray at the world and a swept sphere at targets, bends onto the locked target if that is near the crosshair, and burns whatever it reaches in ticks. Heat rises while it is on; at full heat it cuts out and will not light again until it has cooled to `beamResumeHeat`. Resting the crosshair on a target locks it (`Config.combat.autoLockTime`).
 
 Damage and knockback scale with the speed carried into the hit. Hit-stop is a short whole-simulation freeze; presses made during it, during a cooldown or mid-lunge are buffered for 0.3 s.
 
@@ -155,11 +164,12 @@ All of this reads `PlayerState` and listens on `EventBus<GameEvents>` (`player:s
 - `vfx/ParticleSystem.ts` — one pooled instanced mesh (700 solid-colour cubes, one draw call) shared by every effect; oldest particle recycled when full. `vfx/ShockRings.ts` — pooled camera-facing rings. `vfx/CombatEffects.ts` — maps combat events to bursts: hit sparks, explosions with falling debris, muzzle flashes, wall impacts, smoke behind missiles and crippled drones.
 - `ui/DamageFlash.ts` — red vignette on taking damage.
 - `audio/AudioManager.ts` — the AudioContext, a master gain with music and effects buses, and the synthesis primitives (noise burst, tone run, pitch sweep, enveloped note). Nothing plays until `unlock()` runs from a user gesture. No audio files.
-- `audio/FlightAudio.ts` — continuous layers driven by flight: wind, boost rumble, a whoosh when passing close to surfaces at speed (three rays, ten times a second), city hum near street level.
+- `audio/FlightAudio.ts` — continuous layers driven by flight: wind, boost rumble, a whoosh when passing close to surfaces at speed (three rays, ten times a second), city hum near street level, the roar of the heat beam.
 - `audio/SoundBank.ts` — every one-shot, as a mapping from game events to synthesis.
 - `audio/MusicManager.ts` — generative music scheduled on the audio clock. `notesForStep()` is the arrangement as a pure function: pad while exploring, bass and arpeggio in a fight, drums when intense, a darker progression and faster tempo for the boss.
-- `ui/Menus.ts` — click-to-fly / paused gate and menu tabs. `ui/HUD.ts` — health and energy bars that fade when full. `ui/TargetReticle.ts` — crosshair and target marker.
-- `enemies/DroneView.ts`, `rendering/ProjectileRenderer.ts` — graybox drone with hit flash and health bar; instanced blast bolts.
+- `ui/Menus.ts` — click-to-fly / paused gate and menu tabs. `ui/HUD.ts` — health and energy bars that fade when full, and the beam's heat gauge. `ui/TargetReticle.ts` — crosshair and target marker.
+- `vfx/BeamView.ts` — the heat beam: a camera-facing ribbon with a white-hot core in turbulent flame, a burning point and a light where it lands, a glare at the eyes.
+- `enemies/DroneView.ts`, `rendering/ProjectileRenderer.ts` — graybox drone with hit flash and health bar; instanced enemy bullets and missiles.
 
 ## Quality
 
