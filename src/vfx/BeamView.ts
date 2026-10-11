@@ -15,6 +15,7 @@ import {
 } from 'three';
 import type { HeatBeam } from '../combat/HeatBeam';
 import { Config } from '../core/Config';
+import { TO_LINEAR } from '../rendering/shaderColor';
 import { damp } from '../utils/math';
 
 /** Width of the whole beam, flame included, metres. The white-hot core is about a fifth of it. */
@@ -37,6 +38,7 @@ const VERTEX = /* glsl */ `
 const FRAGMENT = /* glsl */ `
   #include <common>
   #include <logdepthbuf_pars_fragment>
+  ${TO_LINEAR}
   uniform float uTime;
   uniform float uLength;
   uniform float uPower;
@@ -77,6 +79,8 @@ const FRAGMENT = /* glsl */ `
     float alpha = max(core, flame * (0.6 + 0.3 * uHeat)) * flicker;
     // Ease in at the eyes and out at the far end.
     alpha *= smoothstep(0.0, 0.5, along) * smoothstep(0.0, 1.0, uLength - along) * uPower;
+    // Brighter than white at the core, so the bloom pass makes it glare.
+    color = toLinear(color) * (1.0 + 2.2 * core + 0.8 * flame);
     gl_FragColor = vec4(color * alpha, alpha);
   }
 `;

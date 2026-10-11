@@ -18,6 +18,9 @@ Built: Phases 0–10 and 12–15 of spec section 49, plus the hero model from Ph
   towers and street grid carried out past the core, about 2,400 trees, shaded ground, clouds,
   modelled cars and pedestrians.
 - Heat beam (replaces the energy bolts): held, hitscan, overheats and must cool; hover-to-lock targeting.
+- Bloom around the beam, lit windows, lamps and the sun; surfaces lit by and mirroring the game's own sky.
+- Browser checks use one worker, a 960×540 viewport and longer bounded waits for SwiftShader.
+  Slow-host menu regression: `SKYBOUND_E2E_CPU_SLOWDOWN=40 pnpm exec playwright test --grep 'menus:'`.
 
 Not built:
 
@@ -50,6 +53,7 @@ Before reporting a task done: typecheck, lint, unit tests, e2e, and a clean brow
 - Gameplay talks to presentation only through `EventBus<GameEvents>`.
 - Zustand is `zustand/vanilla`, for low-frequency state only.
 - The renderer uses a logarithmic depth buffer. A hand-written `ShaderMaterial` must include the `logdepthbuf` chunks or it will not draw (see `vfx/BeamView.ts`).
+- The frame is composed in linear light and converted for the display by an output pass. A hand-written fragment shader must wrap its final colour in `toLinear()` (`rendering/shaderColor.ts`), or it comes out washed. To make something glow, make it brighter than 1; do not lower the bloom threshold.
 - Any pattern drawn in a shader (windows, road paint, paving) must be antialiased with `fwidth` and fade out before it is smaller than a pixel. Hard `step()` edges are what made downtown flicker.
 - The ground is a plane (`PhysicsWorld.addGround`), not a box. Do not add colliders kilometres wide: shape casts against them lose precision.
 - No gameplay binding on Ctrl, Alt or Meta. Do not bind F1, F5, F6, F7, F10, F11, F12.

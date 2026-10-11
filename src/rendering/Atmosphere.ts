@@ -5,17 +5,21 @@ import {
   Fog,
   HemisphereLight,
   Mesh,
+  MeshBasicMaterial,
   PCFSoftShadowMap,
+  PMREMGenerator,
+  Scene,
   ShaderMaterial,
   SphereGeometry,
   Vector3,
   type MeshStandardMaterial,
   type PerspectiveCamera,
-  type Scene,
   type WebGLRenderer,
+  type WebGLRenderTarget,
 } from 'three';
 import { Config } from '../core/Config';
 import type { SkySample } from '../world/DayNightSystem';
+import { TO_LINEAR } from './shaderColor';
 
 /** Materials the atmosphere tints: wet ground in rain, and headlights by time of day. */
 export interface AtmosphereTargets {
@@ -44,9 +48,17 @@ export class Atmosphere {
   private readonly sky: Mesh;
   private readonly skyMaterial: ShaderMaterial;
   private readonly fog: Fog;
+  /** A copy of the sky, drawn into a cube map so surfaces are lit by it and mirror it. */
+  private readonly skyScene = new Scene();
+  private readonly skyGround: MeshBasicMaterial;
+  private readonly prefilter: PMREMGenerator;
+  private skyLight: WebGLRenderTarget | null = null;
+  private readonly skyLightSun = new Vector3();
+  private skyLightNight = Infinity;
+  private skyLightRain = Infinity;
 
   constructor(
-    scene: Scene,
+    private readonly scene: Scene,
     private readonly camera: PerspectiveCamera,
     private readonly renderer: WebGLRenderer,
     private readonly targets: AtmosphereTargets,
@@ -93,7 +105,7 @@ export class Atmosphere {
         uniform float uNight;
         uniform float uCloudCover;
         varying vec3 vDirection;
-
+        ${TO_LINEAR}
         float hash(vec2 p) {
           return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
         }
@@ -154,11 +166,28 @@ export class Atmosphere {
             color = mix(color, cloud, cover * fade);
           }
 
-          gl_FragColor = vec4(color, 1.0);
+          gl_FragColor = vec4(toLinear(color), 1.0);
           #include <colorspace_fragment>
         }`,
     });
     this.sky = new Mesh(new SphereGeometry(SKY_RADIUS, 32, 16), this.skyMaterial);
+
+    // What the city reflects: the same sky, over a dull ground so undersides are not sky-blue.
+    this.prefilter = new PMREMGenerator(renderer);
+    this.skyGround = new MeshBasicMaterial({ side: BackSide, fog: false });
+    const below = new SphereGeometry(
+      SKY_RADIUS * 0.98,
+      16,
+      8,
+      0,
+      Math.PI * 2,
+      Math.PI / 2,
+      Math.PI / 2,
+    );
+    this.skyScene.add(
+      new Mesh(this.sky.geometry, this.skyMaterial),
+      new Mesh(below, this.skyGround),
+    );
     this.sky.renderOrder = -1000;
     this.sky.frustumCulled = false;
     scene.add(this.sky);
@@ -230,10 +259,34 @@ export class Atmosphere {
     this.fog.near = fogNear * (1 - rain * 0.75);
     this.fog.far = fogFar * (1 - rain * 0.72);
 
+    this.updateSkyLight(sample, rain);
+
     const { land, vehicles } = this.targets;
     land.roughness = 1 - rain * 0.6;
     // Only the lights glow (see FollowerRenderer); the red channel carries how brightly.
     vehicles.emissive.setScalar(0.08 + sample.night * 0.92);
     this.targets.setWindowLight(sample.windowLight, sample.night);
+  }
+
+  /**
+   * Redraws the sky reflection when the light has changed enough to notice.
+   * It is a handful of small renders, so it must not run every frame.
+   */
+  private updateSkyLight(sample: SkySample, rain: number): void {
+    const { skyLight, skyLightTurn, skyLightRain } = Config.render;
+    this.scene.environmentIntensity = skyLight;
+    const stale =
+      sample.lightDirection.angleTo(this.skyLightSun) >= skyLightTurn ||
+      Math.abs(sample.night - this.skyLightNight) >= 0.04 ||
+      Math.abs(rain - this.skyLightRain) >= skyLightRain;
+    if (!stale && this.skyLight) return;
+    this.skyLightSun.copy(sample.lightDirection);
+    this.skyLightNight = sample.night;
+    this.skyLightRain = rain;
+    this.skyGround.color.copy(sample.ambientGround).multiplyScalar(0.6);
+    const previous = this.skyLight;
+    this.skyLight = this.prefilter.fromScene(this.skyScene, 0.03, 1, SKY_RADIUS * 2);
+    this.scene.environment = this.skyLight.texture;
+    previous?.dispose();
   }
 }

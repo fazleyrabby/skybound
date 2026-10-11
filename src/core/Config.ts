@@ -34,6 +34,18 @@ export const Config = {
     shadowMapSize: 2048,
     /** Half width of the area around the player that receives shadows, metres. */
     shadowRange: 170,
+    /** Overall brightness of the finished frame. */
+    exposure: 1,
+    /** Glow around anything brighter than `bloomThreshold`: the beam, lit windows, lamps, the sun. Set by the quality preset. */
+    bloom: 1,
+    bloomStrength: 0.5,
+    bloomRadius: 0.55,
+    bloomThreshold: 0.95,
+    /** How strongly surfaces are lit by, and mirror, the sky. */
+    skyLight: 0.3,
+    /** The sky reflection is redrawn when the sun has moved this far (radians), or the rain changed this much. */
+    skyLightTurn: 0.05,
+    skyLightRain: 0.12,
   },
   input: {
     /** Radians of aim per pixel of mouse movement. */

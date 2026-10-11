@@ -9,6 +9,7 @@ import {
   type Scene,
 } from 'three';
 import type { SkySample } from '../world/DayNightSystem';
+import { TO_LINEAR } from './shaderColor';
 
 /** Drawn slightly below the land so the shoreline does not z-fight. */
 const WATER_Y = -0.4;
@@ -61,6 +62,7 @@ export class Water {
         uniform float uNight;
         uniform vec3 uSunDirection;
         uniform vec3 uSunColor;
+        ${TO_LINEAR}
         uniform vec3 uSkyTop;
         uniform vec3 uSkyHorizon;
         varying vec3 vWorld;
@@ -137,7 +139,7 @@ export class Water {
           foam += smoothstep(0.34, 0.5, length(slope)) * 0.35 * nearDetail;
           color = mix(color, vec3(0.92, 0.96, 0.98) * (0.35 + 0.65 * daylight), clamp(foam, 0.0, 1.0));
 
-          gl_FragColor = vec4(color, 1.0);
+          gl_FragColor = vec4(toLinear(color), 1.0);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
           #include <fog_fragment>

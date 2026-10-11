@@ -171,6 +171,12 @@ All of this reads `PlayerState` and listens on `EventBus<GameEvents>` (`player:s
 - `vfx/BeamView.ts` — the heat beam: a camera-facing ribbon with a white-hot core in turbulent flame, a burning point and a light where it lands, a glare at the eyes.
 - `enemies/DroneView.ts`, `rendering/ProjectileRenderer.ts` — graybox drone with hit flash and health bar; instanced enemy bullets and missiles.
 
+### Post-processing and sky light
+
+`rendering/Renderer.ts` draws the scene into a half-float, 4× multisampled buffer through three's `EffectComposer`: a render pass, `UnrealBloomPass` (on for MEDIUM and up) and an output pass that applies exposure and converts for the display. Bloom catches only what is brighter than `bloomThreshold`, which ordinary sunlit surfaces never reach, so only emitters glow: the beam, lit windows, lamps, car lights, the sun. Tone mapping is exposure only; filmic curves shifted every colour the game was tuned with.
+
+`Atmosphere` also renders its own sky (over a dull ground) into a prefiltered cube map and sets it as the scene environment, so glass, car paint and the hero's gold trim mirror the actual sky at the actual time of day. It is redrawn only when the sun has moved `skyLightTurn`, or night or rain have changed noticeably. No HDRI file.
+
 ## Quality
 
 `rendering/QualitySettings.ts` holds the five presets (MOBILE to ULTRA) as data, `writePreset()` which copies one into `Config`, and `AdaptiveQuality`, which is pure logic fed one frame time per frame. It trades resolution first, within the preset's range; if the lowest resolution is still slow for three seconds it drops a preset; with eight seconds of headroom at full resolution it tries the next one up, never past HIGH by itself. A manual choice fixes the preset and leaves dynamic resolution on. `Game.ts` applies changes: pixel ratio on the renderer, shadow settings on the atmosphere; density and particle multipliers are read from `Config` by the systems that use them.
@@ -191,6 +197,17 @@ All of this reads `PlayerState` and listens on `EventBus<GameEvents>` (`player:s
 - Backquote: `debug/DebugMenu.ts`. While open, number keys spawn an enemy or the boss, cycle teleports, toggle weather, advance time, toggle god mode, unlock missions, and (9) open `debug/TuningPanel.ts`: live sliders over most `Config` sections with Copy JSON and Reset.
 - `debug/testHook.ts`: `window.__SKYBOUND__` (state, input injection, start without pointer lock, teleport, spawners, time and weather, quality). Dev or `?debug` only.
 - Particle diagnostics include both current survivors and total emissions. Browser assertions use emissions where particle expiry during software rendering would make survivor counts unreliable.
+
+## Browser verification
+
+`playwright.config.ts` runs Chromium with SwiftShader, one worker and a 960×540 viewport.
+Tests still pin HIGH where scene density is under inspection; the smaller viewport reduces
+software raster work. The default whole-test deadline is 120 seconds, distinct from the
+15-second assertion deadline. Longer simulation waits remain explicit in individual tests.
+`SKYBOUND_E2E_CPU_SLOWDOWN=40` enables CDP CPU throttling for the menu reload regression.
+Failure traces and screenshots are retained and uploaded by CI. The settings test also
+captures its persisted settings panel and checks console/runtime errors. Combat's manual
+lock test starts with hover locking disabled so Q cannot accidentally release an automatic lock.
 
 ## Dependency direction
 

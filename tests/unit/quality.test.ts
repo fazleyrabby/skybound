@@ -46,6 +46,24 @@ describe('quality presets (spec section 37)', () => {
   });
 });
 
+describe('bloom', () => {
+  afterEach(() => writePreset(DEFAULT_PRESET));
+
+  it('is on for the presets that can afford a second pass, and off for the lightest', () => {
+    expect(PRESETS.ULTRA.bloom && PRESETS.HIGH.bloom && PRESETS.MEDIUM.bloom).toBe(true);
+    expect(PRESETS.LOW.bloom || PRESETS.MOBILE.bloom).toBe(false);
+    writePreset('LOW');
+    expect(Config.render.bloom).toBe(0);
+    writePreset('HIGH');
+    expect(Config.render.bloom).toBe(1);
+  });
+
+  it('only catches what is brighter than a lit white surface', () => {
+    expect(Config.render.bloomThreshold).toBeGreaterThan(0.85);
+    expect(Config.render.bloomStrength).toBeLessThan(1);
+  });
+});
+
 describe('adaptive quality', () => {
   it('starts at the default preset and leaves a healthy frame rate alone', () => {
     const quality = new AdaptiveQuality();

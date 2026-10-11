@@ -15,6 +15,7 @@ export interface PresetValues {
   shadows: boolean;
   shadowMapSize: number;
   shadowRange: number;
+  bloom: boolean;
   /** Multipliers, 1 is full. */
   particles: number;
   trees: number;
@@ -31,6 +32,7 @@ export const PRESETS: Record<QualityPreset, PresetValues> = {
     shadows: true,
     shadowMapSize: 4096,
     shadowRange: 220,
+    bloom: true,
     particles: 1,
     trees: 1,
     vehicles: 1,
@@ -43,6 +45,7 @@ export const PRESETS: Record<QualityPreset, PresetValues> = {
     shadows: true,
     shadowMapSize: 2048,
     shadowRange: 170,
+    bloom: true,
     particles: 1,
     trees: 1,
     vehicles: 1,
@@ -55,6 +58,7 @@ export const PRESETS: Record<QualityPreset, PresetValues> = {
     shadows: true,
     shadowMapSize: 1024,
     shadowRange: 120,
+    bloom: true,
     particles: 0.7,
     trees: 0.75,
     vehicles: 0.8,
@@ -67,6 +71,7 @@ export const PRESETS: Record<QualityPreset, PresetValues> = {
     shadows: false,
     shadowMapSize: 1024,
     shadowRange: 120,
+    bloom: false,
     particles: 0.4,
     trees: 0.45,
     vehicles: 0.5,
@@ -79,6 +84,7 @@ export const PRESETS: Record<QualityPreset, PresetValues> = {
     shadows: false,
     shadowMapSize: 512,
     shadowRange: 80,
+    bloom: false,
     particles: 0.3,
     trees: 0.3,
     vehicles: 0.35,
@@ -95,6 +101,7 @@ export function writePreset(preset: QualityPreset): void {
   Config.render.shadows = values.shadows ? 1 : 0;
   Config.render.shadowMapSize = values.shadowMapSize;
   Config.render.shadowRange = values.shadowRange;
+  Config.render.bloom = values.bloom ? 1 : 0;
   Config.vfx.particleScale = values.particles;
   Config.quality.trees = values.trees;
   Config.quality.vehicles = values.vehicles;

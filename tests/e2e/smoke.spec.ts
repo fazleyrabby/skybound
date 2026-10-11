@@ -1,4 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
+import { defaultSave, SAVE_KEY } from '../../src/save/SaveManager';
+
+// Opt-in slow-host regression: SKYBOUND_E2E_CPU_SLOWDOWN=40 with --grep 'menus:'.
+test.beforeEach(async ({ page }) => {
+  const rate = Number(process.env.SKYBOUND_E2E_CPU_SLOWDOWN ?? 1);
+  if (rate > 1) {
+    const session = await page.context().newCDPSession(page);
+    await session.send('Emulation.setCPUThrottlingRate', { rate });
+  }
+});
 
 async function boot(page: Page): Promise<void> {
   await page.goto('/');
@@ -232,8 +242,15 @@ test('debug menu opens with Backquote; 9 opens the tuning panel and sliders edit
   await expect(page.locator('#debug-menu')).toBeHidden();
 });
 
-test('combat: blast and punch a training dummy', async ({ page }) => {
+test('combat: heat beam and punch a training dummy', async ({ page }) => {
   test.setTimeout(120_000);
+  // Q must test manual locking, rather than toggle off a lock acquired by hovering.
+  const save = defaultSave();
+  save.settings.autoLock = false;
+  await page.addInitScript(({ key, value }) => localStorage.setItem(key, value), {
+    key: SAVE_KEY,
+    value: JSON.stringify(save),
+  });
   await bootAndStart(page);
   const hold = (action: string, held: boolean) =>
     page.evaluate(
@@ -251,9 +268,9 @@ test('combat: blast and punch a training dummy', async ({ page }) => {
 
   await hold('blast', true);
   await expect.poll(async () => (await dummy()).health).toBeLessThan(100);
-  await hold('blast', false);
   expect(await page.evaluate(() => window.__SKYBOUND__!.player.energy)).toBeLessThan(100);
   await expect(page.locator('#hud-energy')).toHaveCSS('opacity', '1');
+  await hold('blast', false);
 
   // Move in close and punch it until it breaks; it then respawns.
   const emissionsBefore = await page.evaluate(() => window.__SKYBOUND__!.emittedParticles);
@@ -296,7 +313,7 @@ test('combat: blast and punch a training dummy', async ({ page }) => {
 });
 
 test('hostile drones patrol, then engage a player who comes close', async ({ page }) => {
-  test.setTimeout(150_000);
+  test.setTimeout(240_000);
   await bootAndStart(page);
   const hostile = () =>
     page.evaluate(() => window.__SKYBOUND__!.enemies.find((enemy) => !enemy.passive)!);
@@ -316,9 +333,9 @@ test('hostile drones patrol, then engage a player who comes close', async ({ pag
     drone.y,
     drone.z,
   ] as const);
-  await expect.poll(async () => (await hostile()).state, { timeout: 20_000 }).toBe('ATTACK');
+  await expect.poll(async () => (await hostile()).state, { timeout: 45_000 }).toBe('ATTACK');
   await expect
-    .poll(() => page.evaluate(() => window.__SKYBOUND__!.enemyShots), { timeout: 20_000 })
+    .poll(() => page.evaluate(() => window.__SKYBOUND__!.enemyShots), { timeout: 45_000 })
     .toBeGreaterThan(0);
   // Judge by simulated time, not wall time: software rendering can run far slower than real time.
   const startStep = await page.evaluate(() => window.__SKYBOUND__!.stepCount);
@@ -595,7 +612,7 @@ test('atmosphere: time of day and rain change the world without errors or blowin
   await expect.poll(async () => (await world()).night).toBe(1);
 
   await page.evaluate(() => window.__SKYBOUND__!.setWeather('rain'));
-  await expect.poll(async () => (await world()).rain, { timeout: 30_000 }).toBeGreaterThan(0.5);
+  await expect.poll(async () => (await world()).rain, { timeout: 60_000 }).toBeGreaterThan(0.5);
 
   await page.evaluate(() => window.__SKYBOUND__!.setTime(18.5));
   await expect.poll(async () => (await world()).hour).toBe(18.5);
@@ -655,7 +672,12 @@ test('quality: presets change resolution, shadows and density; the simulation st
 
 test('menus: settings apply and persist, mission select starts a mission, hints guide a new player', async ({
   page,
-}) => {
+}, testInfo) => {
+  const consoleErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+  page.on('pageerror', (error) => consoleErrors.push(error.message));
   await page.goto('/');
   await page.waitForFunction(() => window.__SKYBOUND__?.phase === 'ready');
   const menu = page.locator('#start-screen');
@@ -688,6 +710,7 @@ test('menus: settings apply and persist, mission select starts a mission, hints 
   await expect(panel.locator('input[data-setting="invertY"]')).toBeChecked();
   await expect(panel.locator('select[data-setting="quality"]')).toHaveValue('LOW');
   expect((await page.evaluate(() => window.__SKYBOUND__!.quality)).preset).toBe('LOW');
+  await page.screenshot({ path: testInfo.outputPath('settings-persisted.png') });
 
   // Reset puts them back.
   await panel.locator('button[data-action="reset-settings"]').click();
@@ -712,5 +735,6 @@ test('menus: settings apply and persist, mission select starts a mission, hints 
   });
   await expect(menu).toBeHidden();
   await expect(page.locator('#hint')).toContainText('Space');
+  expect(consoleErrors).toEqual([]);
   expect(await page.evaluate(() => window.__SKYBOUND__!.errorCount)).toBe(0);
 });

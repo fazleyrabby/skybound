@@ -145,6 +145,7 @@ export class Game {
       writePreset(quality.preset);
       renderer.setPixelRatio(quality.pixelRatio);
       atmosphere.configureShadows();
+      renderer.applyQuality();
     };
     applyQuality();
 

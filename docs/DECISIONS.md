@@ -15,6 +15,28 @@ Things built and covered by automated tests, but never judged by a person. This 
 - **Visuals in motion:** day/night transitions, rain building, shadows while flying fast, particle effects, most hero poses, the walk and run cycle, the cape, the heat beam.
 - **Balance:** heat beam damage and overheat time against drones and Titan.
 
+## 2026-10-11 — Bloom and sky reflections (director request: improve the look with free tools)
+
+Of the free options discussed, these needed no account, no download and no third-party asset, so they were done first.
+
+- **Post-processing uses three's own addons** (`EffectComposer`, `UnrealBloomPass`, `OutputPass`). No new dependency.
+- **Exposure-only tone mapping.** Khronos Neutral was tried first and visibly darkened and saturated the whole city (it subtracts a floor from dark tones). The look the director had already seen is kept; bloom is added on top.
+- **Hand-written shaders now write linear colour** (`toLinear`). Sky, water and beam were authored in display values and written straight to the canvas; through the output pass they would have come out washed.
+- **The environment map is the game's own sky**, prefiltered at run time, not a downloaded HDRI. It always matches the clock and the weather, and costs nothing to license. `skyLight` is 0.3: higher tinted the city blue.
+- **Seen on a real GPU for the first time** (the in-app browser): 30 FPS downtown by day and 40–60 elsewhere on HIGH, with dynamic resolution pulling the pixel ratio down to 1.1. That is below target downtown. Not profiled; bloom, 4× multisampling on a half-float buffer, shadows and 1.1 M triangles all contribute.
+- **Not done, and why:** Mixamo animations and AI model generators need the director's account. MPFB needs an add-on installed in their Blender. Poly Haven and ambientCG files need a download they have not approved.
+- **Not verified:** the browser test suite was not run after this change. The Playwright browser had been removed from the cache (and `node_modules` with it) by other work on the machine; dependencies were restored from the lockfile, the browser was not re-downloaded. Checked instead by hand in the in-app browser: day, night with the beam firing, hero close-up; no console errors.
+
+## 2026-10-11 — Software-rendered browser test deadlines
+
+- **Reproduction:** the four reported tests passed locally at normal speed. With CDP CPU throttling at 40×, the original menu test exhausted its 30-second whole-test deadline while waiting for readiness after reload. This reproduces the deadline failure, not the exact GitHub runner or all four reported failures.
+- **Bounded waits:** the suite now allows 120 seconds per test and 15 seconds per assertion. Drone detection and firing each allow 45 seconds, with a 240-second whole-test budget; rain allows 60 seconds. Checks still require real damage, persistence, gameplay transitions and the original draw-call budgets.
+- **Less software raster work:** one worker and a 960×540 viewport, retaining HIGH scene density where tests request it. These runs say nothing about real-GPU frame rate.
+- **Combat race:** the manual Q-lock test now starts with hover locking disabled; otherwise hovering can lock before Q, and Q correctly unlocks the target. Beam energy and HUD checks happen before release so regeneration cannot invalidate them.
+- **Diagnostics:** CI uploads retained failure traces and screenshots. The menu test captures persisted settings and checks browser console/runtime errors. Opt-in throttling via `SKYBOUND_E2E_CPU_SLOWDOWN` supports repeating the slow-host regression without slowing every routine run.
+- No gameplay changes or dependencies. GitHub CI, human feel, audio and real-GPU performance remain unverified.
+- **Verified locally:** typecheck, lint, 260 unit tests, production build and all 17 Chromium browser tests pass (6.4 minutes). The throttled menu regression passes in about 90 seconds. The persisted settings screenshot was inspected; menu console/runtime error checks are clean.
+
 ## 2026-10-11 — Hero, city and beam pass (director feedback)
 
 The director asked for a caped hero in the classic mould, then called three versions robotic, toy-like and "like lego"; asked for a more detailed and realistic city everywhere, not only downtown; reported flicker downtown and the ground shaking on foot; and asked for a continuous beam in place of the bolts.
