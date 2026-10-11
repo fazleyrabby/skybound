@@ -63,7 +63,7 @@ export class GameLoop {
 
   constructor(
     private readonly callbacks: LoopCallbacks,
-    step: number,
+    private readonly step: number,
     maxFrameDelta: number,
   ) {
     this.stepper = new FixedStepper(step, maxFrameDelta);
@@ -96,6 +96,18 @@ export class GameLoop {
   dispose(): void {
     this.stop();
     document.removeEventListener('visibilitychange', this.onVisibilityChange);
+  }
+
+  /** Debug/test batches use the same fixed updates, without waiting for software-rendered frames. */
+  advanceSimulation(steps: number): void {
+    if (!Number.isInteger(steps) || steps < 0 || steps > 600) {
+      throw new Error('Simulation batch must be an integer from 0 to 600 steps');
+    }
+    if (this.isPaused) throw new Error('Cannot advance a paused simulation');
+    for (let i = 0; i < steps; i++) {
+      if (this.isPaused) break;
+      this.onStep(this.step);
+    }
   }
 
   private readonly frame = (now: number): void => {

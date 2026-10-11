@@ -85,6 +85,8 @@ export interface TestHook {
   readonly phase: GamePhase;
   readonly frameCount: number;
   readonly stepCount: number;
+  /** Runs up to 600 real fixed steps while running; rendering continues through rAF. */
+  advanceSimulation(steps: number): void;
   readonly errorCount: number;
   readonly bodyCount: number;
   readonly render: RenderStats;
@@ -151,6 +153,7 @@ export function isDebugEnabled(): boolean {
 /** State and input injection for Playwright (spec section 68). Dev builds or `?debug` only. */
 export function installTestHook(sources: {
   loop: LoopStats;
+  advanceSimulation: (steps: number) => void;
   render: () => RenderStats;
   bodyCount: () => number;
   input: InputManager;
@@ -190,6 +193,7 @@ export function installTestHook(sources: {
     get stepCount() {
       return sources.loop.stepCount;
     },
+    advanceSimulation: (steps) => sources.advanceSimulation(steps),
     get errorCount() {
       return errorCount;
     },

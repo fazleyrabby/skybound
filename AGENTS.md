@@ -21,6 +21,8 @@ Built: Phases 0–10 and 12–15 of spec section 49, plus the hero model from Ph
 - Bloom around the beam, lit windows, lamps and the sun; surfaces lit by and mirroring the game's own sky.
 - Browser checks use one worker, a 960×540 viewport and longer bounded waits for SwiftShader.
   Slow-host menu regression: `SKYBOUND_E2E_CPU_SLOWDOWN=40 pnpm exec playwright test --grep 'menus:'`.
+  Titan and rain timers use the test hook's bounded real fixed-step advancement, then check
+  rendered UI. CI simulation timing is diagnostic; reference-hardware performance is still open.
 
 Not built:
 

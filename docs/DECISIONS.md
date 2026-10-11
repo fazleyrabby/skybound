@@ -15,6 +15,15 @@ Things built and covered by automated tests, but never judged by a person. This 
 - **Visuals in motion:** day/night transitions, rain building, shadows while flying fast, particle effects, most hero poses, the walk and run cycle, the cape, the heat beam.
 - **Balance:** heat beam damage and overheat time against drones and Titan.
 
+## 2026-10-11 — Follow-up CI failures: timer progression, pointer lock and timing
+
+- **The first fix was incomplete.** The new CI log used the updated deadlines but still failed Titan's INTRO wait, the menu's Credits click and the 1.5 ms simulation assertion; rain was flaky at 0.497 after 60 wall seconds. Raising whole-test deadlines alone does not repair these assumptions.
+- **Menu reproduced:** entering running through the documented headless hook after mission Start hides the menu, making the previous Credits assertion fail. Real pointer-lock success does the same. Credits is now checked before mission Start, and the test explicitly covers the hidden running menu on every platform.
+- **Timer tests use real simulation steps:** the debug hook exposes bounded batches through the same `GameLoop.onStep`/fixedUpdate callback used by rAF. Paused advancement is rejected; a batch stops if an update pauses the loop. Titan and rain tests advance enough real 60 Hz updates to cross configured timers, then retain browser UI/rendering checks. Production rAF and its stall clamp are unchanged. No timer shortening or direct assignment of expected gameplay states.
+- **Timing is diagnostic on CI:** the 1.5 ms median assertion depended on the runner's CPU and tracing/software rendering. CI reported 1.63–1.67 ms. Measurements are retained as test annotations, while the spec's reference-hardware performance target remains open; this is not a performance improvement.
+- New fixed-step unit regressions failed before implementation and pass afterwards. No dependencies or asset changes.
+- **Verified locally:** typecheck, lint, 264 unit tests, build and all 17 Chromium browser tests pass with bloom/reflections enabled (7.4 minutes). All four affected tests also pass at 8× CDP CPU throttling (1.8 minutes). Persisted settings screenshot inspected; console/runtime error checks pass. GitHub's Linux runner has not been rerun with these changes; reference-hardware performance remains open.
+
 ## 2026-10-11 — Bloom and sky reflections (director request: improve the look with free tools)
 
 Of the free options discussed, these needed no account, no download and no third-party asset, so they were done first.

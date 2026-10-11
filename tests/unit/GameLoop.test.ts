@@ -1,7 +1,39 @@
-import { describe, expect, it } from 'vitest';
-import { FixedStepper } from '../../src/core/GameLoop';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { FixedStepper, GameLoop } from '../../src/core/GameLoop';
 
 const STEP = 1 / 60;
+
+describe('explicit simulation advancement', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function makeLoop() {
+    vi.stubGlobal('document', { addEventListener: vi.fn(), removeEventListener: vi.fn() });
+    const callbacks = { fixedUpdate: vi.fn(), render: vi.fn() };
+    return { loop: new GameLoop(callbacks, STEP, 0.1), callbacks };
+  }
+
+  it('runs real fixed updates without depending on rendering or the frame delta clamp', () => {
+    const { loop, callbacks } = makeLoop();
+    loop.advanceSimulation(240);
+    expect(callbacks.fixedUpdate).toHaveBeenCalledTimes(240);
+    expect(callbacks.fixedUpdate).toHaveBeenLastCalledWith(STEP);
+    expect(callbacks.render).not.toHaveBeenCalled();
+    expect(loop.stats.stepCount).toBe(240);
+    expect(loop.stats.frameCount).toBe(0);
+  });
+
+  it('respects pause and rejects invalid batches without changing state', () => {
+    const { loop, callbacks } = makeLoop();
+    loop.paused = true;
+    expect(() => loop.advanceSimulation(60)).toThrow('paused');
+    loop.paused = false;
+    for (const steps of [-1, 1.5, Infinity, 601]) {
+      expect(() => loop.advanceSimulation(steps)).toThrow();
+    }
+    expect(callbacks.fixedUpdate).not.toHaveBeenCalled();
+    expect(loop.stats.stepCount).toBe(0);
+  });
+});
 
 function countSteps(stepper: FixedStepper, frameDelta: number): { steps: number; alpha: number } {
   let steps = 0;

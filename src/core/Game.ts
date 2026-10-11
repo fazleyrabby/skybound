@@ -468,6 +468,7 @@ export class Game {
     if (isDebugEnabled()) {
       installTestHook({
         loop: loop.stats,
+        advanceSimulation: (steps) => loop.advanceSimulation(steps),
         render: () => renderer.stats,
         bodyCount: () => physics.bodyCount,
         input,

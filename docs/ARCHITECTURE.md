@@ -208,6 +208,13 @@ software raster work. The default whole-test deadline is 120 seconds, distinct f
 Failure traces and screenshots are retained and uploaded by CI. The settings test also
 captures its persisted settings panel and checks console/runtime errors. Combat's manual
 lock test starts with hover locking disabled so Q cannot accidentally release an automatic lock.
+Timer-heavy Titan and rain tests call `advanceSimulation(steps)` on the debug hook: bounded
+batches of up to 600 updates through `GameLoop`'s normal fixed callback, respecting pause and
+updating step counts. It does not change timers, assign expected states or render each step;
+real rAF frames still verify presentation afterwards. Unit tests cover batching and pause.
+The menu test checks Credits before Start hides the menu, and explicitly enters running
+through the headless hook to cover that path whether pointer lock is granted or refused.
+Simulation timings are recorded as annotations, not judged against hardware budgets in CI.
 
 ## Dependency direction
 
